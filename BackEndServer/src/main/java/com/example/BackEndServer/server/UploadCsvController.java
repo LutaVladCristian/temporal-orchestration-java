@@ -1,30 +1,60 @@
 package com.example.BackEndServer.server;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import com.example.BackEndServer.server.dto.UploadCsvInputDto;
+import com.example.BackEndServer.server.entity.IncomeFromSells;
+import com.example.BackEndServer.server.entity.OtherIncomeFees;
+import com.example.BackEndServer.server.repository.IncomeFromSellsRepository;
+import com.example.BackEndServer.server.repository.OtherIncomeFeesRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.batch.core.BatchStatus;
+import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.BackEndServer.server.dto.UploadCsvInputDto;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/spring-boot-api")
+@RequiredArgsConstructor
 public class UploadCsvController {
 
-    @Autowired
-    UploadCsvService uploadCsvService;
-
+    private final UploadCsvService uploadCsvService;
+    private final JobExplorer jobExplorer;
+    private final IncomeFromSellsRepository incomeFromSellsRepository;
+    private final OtherIncomeFeesRepository otherIncomeFeesRepository;
 
     @PostMapping("/upload-csv")
-    public String uploadCsv(@RequestParam("name") String name, @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<Map<String, Long>> uploadCsv(
+            @RequestParam("name") String name,
+            @RequestParam("file") MultipartFile file) {
+
         UploadCsvInputDto input = UploadCsvInputDto.builder()
                 .name(name)
                 .file(file)
                 .build();
-        uploadCsvService.uploadCsv(input);
-        return "redirect:/";
+        long jobExecutionId = uploadCsvService.uploadCsv(input);
+        return ResponseEntity.ok(Map.of("jobExecutionId", jobExecutionId));
     }
 
+    @GetMapping("/job-status/{executionId}")
+    public ResponseEntity<Map<String, String>> jobStatus(@PathVariable Long executionId) {
+        var execution = jobExplorer.getJobExecution(executionId);
+        if (execution == null) {
+            return ResponseEntity.notFound().build();
+        }
+        BatchStatus status = execution.getStatus();
+        return ResponseEntity.ok(Map.of("status", status.name()));
+    }
+
+    @GetMapping("/income-from-sells")
+    public ResponseEntity<List<IncomeFromSells>> getIncomeFromSells() {
+        return ResponseEntity.ok(incomeFromSellsRepository.findAll());
+    }
+
+    @GetMapping("/other-income-fees")
+    public ResponseEntity<List<OtherIncomeFees>> getOtherIncomeFees() {
+        return ResponseEntity.ok(otherIncomeFeesRepository.findAll());
+    }
 }
