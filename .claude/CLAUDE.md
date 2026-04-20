@@ -8,7 +8,7 @@ AI-powered trading tax calculator that uses an MCP (Model Context Protocol) serv
 
 ## Database (Docker)
 
-Start the PostgreSQL database before running the application:
+The database is **Microsoft SQL Server 2022** running in Docker. Start it before running the application:
 
 ```bash
 cd BackEndServer
@@ -16,6 +16,26 @@ docker compose up -d
 ```
 
 To stop it: `docker compose down`
+
+On first run, the database `SERVER_DB` must be created manually. Connect to `master` with the credentials below and run:
+
+```sql
+CREATE DATABASE SERVER_DB;
+```
+
+**Connection details** (use the SQL Server extension in VS Code):
+
+| Field | Value |
+|---|---|
+| Server name | `localhost` |
+| Authentication | SQL Login |
+| User name | `sa` |
+| Password | `MyStrongP@ssword1` |
+| Database name | `SERVER_DB` |
+
+### Database schema
+
+Migration scripts live in `database-setup/`. Run them in order against `SERVER_DB`.
 
 ## Backend Commands
 
@@ -42,7 +62,8 @@ mvn test -Dtest=BackEndServerApplicationTests
 - **Spring Batch** — chunk-oriented processing of CSV trading statements
 - **Spring Data JPA / Hibernate** — persistence layer
 - **Lombok** — boilerplate reduction (`@Data`, `@Builder`, etc.)
-- **MCP Server** (external) — database interface and RAG retrieval for Claude AI
+- **Microsoft SQL Server 2022** (Docker) — persistence store
+- **mssql-jdbc** — SQL Server JDBC driver
 
 ## Architecture
 
@@ -63,6 +84,8 @@ The sample trading statement at `src/main/resources/2025_tax_year_statement.csv`
 
 `src/main/resources/application.properties` currently only sets `spring.application.name`. Before running, you will need to add:
 
-- `spring.datasource.*` — connection to MCP-backed database
+- `spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=SERVER_DB;encrypt=false`
+- `spring.datasource.username=sa`
+- `spring.datasource.password=MyStrongP@ssword1`
 - `spring.jpa.hibernate.ddl-auto`
 - `spring.batch.job.enabled` / `spring.batch.jdbc.initialize-schema`

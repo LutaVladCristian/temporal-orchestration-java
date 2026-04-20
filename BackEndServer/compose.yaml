@@ -1,15 +1,15 @@
 services:
   db:
-    image: postgres:16
-    container_name: my-postgres-container
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: my-mssql-container
     environment:
-      POSTGRES_DB: BackEndServerDB
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
+      ACCEPT_EULA: Y
+      SA_PASSWORD: MyStrongP@ssword1
+      MSSQL_DB: SERVER_DB
     ports:
-      - "5432:5432"
+      - "1433:1433"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mssqldata:/var/opt/mssql
 
   app:
     build: .
@@ -19,10 +19,10 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/BackEndServerDB
-      SPRING_DATASOURCE_USERNAME: myuser
-      SPRING_DATASOURCE_PASSWORD: mypassword
+      SPRING_DATASOURCE_URL: jdbc:sqlserver://db:1433;databaseName=SERVER_DB;encrypt=false
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: MyStrongP@ssword1
 
 
 volumes:
-  pgdata:
+  mssqldata:
