@@ -42,12 +42,15 @@ Migration scripts live in `database-setup/`. Run them in order against `SERVER_D
 All commands run from the `BackEndServer/` directory using system Maven (`mvn`).
 
 ```bash
-# Start the server
+# Build the JAR (required before running in Docker)
 cd BackEndServer
-mvn spring-boot:run
-
-# Build (skip tests)
 mvn clean package -DskipTests
+
+# Rebuild Docker image and restart containers (run after every JAR rebuild)
+docker compose up -d --build
+
+# Start the server locally (outside Docker)
+mvn spring-boot:run
 
 # Run all tests
 mvn clean test
@@ -55,6 +58,8 @@ mvn clean test
 # Run a single test class
 mvn test -Dtest=BackEndServerApplicationTests
 ```
+
+> After any change to `application.properties` or source code, always rebuild the JAR and run `docker compose up -d --build` — Docker uses a cached image otherwise and the changes won't take effect.
 
 ## Tech Stack
 
