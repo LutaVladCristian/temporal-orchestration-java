@@ -24,7 +24,7 @@ public class OtherIncomeFees {
     @Column(name = "date_aquired", nullable = false)
     private LocalDate date;
 
-    @Column(name = "symbol", nullable = false, length = 10)
+    @Column(name = "symbol", nullable = false, length = 32)
     private String symbol;
 
     @Column(name = "security_name", nullable = false)

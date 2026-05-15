@@ -40,8 +40,11 @@ public class UploadCsvController {
                 .name(name)
                 .file(file)
                 .build();
-        long jobExecutionId = uploadCsvService.uploadCsv(input);
-        return ResponseEntity.ok(new UploadCsvResponseDto(jobExecutionId, name));
+        var jobLaunchResult = uploadCsvService.uploadCsv(input);
+        return ResponseEntity.ok(new UploadCsvResponseDto(
+                jobLaunchResult.sellsJobExecutionId(),
+                jobLaunchResult.otherIncomeJobExecutionId(),
+                name));
     }
 
     @GetMapping("/job-status/{executionId}")

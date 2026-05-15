@@ -1,5 +1,6 @@
 export type UploadResponse = {
-  jobExecutionId: number;
+  sellsJobExecutionId: number;
+  otherIncomeJobExecutionId: number;
   statementName: string;
 };
 

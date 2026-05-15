@@ -15,8 +15,21 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
 type GridView = "sells" | "other";
+type ImportJobKey = "sells" | "otherIncome";
+type TrackedJobStatus = {
+  key: ImportJobKey;
+  label: string;
+  executionId: number;
+  defaultStepName: string;
+  status: JobStatus | null;
+};
 
 const terminalStatuses = new Set(["COMPLETED", "FAILED", "STOPPED", "ABANDONED"]);
+const failedStatuses = new Set(["FAILED", "STOPPED", "ABANDONED"]);
+const importJobTemplates: Omit<TrackedJobStatus, "executionId" | "status">[] = [
+  { key: "sells", label: "Income from sells", defaultStepName: "sellsStep" },
+  { key: "otherIncome", label: "Other income & fees", defaultStepName: "otherIncomeStep" }
+];
 
 const defaultColDef: ColDef = {
   sortable: true,
@@ -48,6 +61,36 @@ function fileNameToStatementName(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
 }
 
+function buildFailureMessage(jobStatuses: TrackedJobStatus[]) {
+  return jobStatuses
+    .flatMap((job) => (job.status?.failureMessages ?? []).map((message) => `${job.label}: ${message}`))
+    .join(" | ");
+}
+
+function aggregateImportStatus(jobStatuses: TrackedJobStatus[]) {
+  if (!jobStatuses.length) {
+    return "IDLE";
+  }
+
+  if (jobStatuses.some((job) => job.status && failedStatuses.has(job.status.status))) {
+    return "FAILED";
+  }
+
+  if (jobStatuses.every((job) => job.status?.status === "COMPLETED")) {
+    return "COMPLETED";
+  }
+
+  if (jobStatuses.some((job) => job.status?.status === "STARTED")) {
+    return "STARTED";
+  }
+
+  if (jobStatuses.some((job) => job.status?.status === "STARTING")) {
+    return "STARTING";
+  }
+
+  return "IDLE";
+}
+
 export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -56,7 +99,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<GridView>("sells");
   const [sellsSearch, setSellsSearch] = useState("");
   const [otherSearch, setOtherSearch] = useState("");
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [jobStatuses, setJobStatuses] = useState<TrackedJobStatus[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -151,33 +194,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!jobStatus || terminalStatuses.has(jobStatus.status)) {
+    const activeJobs = jobStatuses.filter((job) => job.status && !terminalStatuses.has(job.status.status));
+    if (!activeJobs.length) {
       return undefined;
     }
 
     const intervalId = window.setInterval(async () => {
       try {
-        const nextStatus = await fetchJobStatus(jobStatus.executionId);
-        setJobStatus(nextStatus);
+        const nextStatuses = await Promise.all(
+          jobStatuses.map(async (job) => {
+            if (!job.status || terminalStatuses.has(job.status.status)) {
+              return job;
+            }
 
-        if (terminalStatuses.has(nextStatus.status)) {
+            const nextStatus = await fetchJobStatus(job.executionId);
+            return { ...job, status: nextStatus };
+          })
+        );
+        setJobStatuses(nextStatuses);
+
+        if (nextStatuses.every((job) => job.status && terminalStatuses.has(job.status.status))) {
           window.clearInterval(intervalId);
           setUploading(false);
-          if (nextStatus.status === "COMPLETED") {
+
+          if (nextStatuses.every((job) => job.status?.status === "COMPLETED")) {
             void loadTables();
-          } else if (nextStatus.failureMessages.length > 0) {
-            setErrorMessage(nextStatus.failureMessages.join(" | "));
+          } else {
+            const failureMessage = buildFailureMessage(nextStatuses);
+            if (failureMessage) {
+              setErrorMessage(failureMessage);
+            }
           }
         }
       } catch (error) {
         setUploading(false);
-        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the batch job.");
+        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the batch jobs.");
         window.clearInterval(intervalId);
       }
     }, 1500);
 
     return () => window.clearInterval(intervalId);
-  }, [jobStatus]);
+  }, [jobStatuses]);
 
   function handleFileSelected(file: File | null) {
     if (!file) {
@@ -205,13 +262,34 @@ export default function App() {
 
     try {
       const uploadResponse = await uploadCsv(statementName.trim(), selectedFile);
-      const initialStatus = await fetchJobStatus(uploadResponse.jobExecutionId);
-      setJobStatus(initialStatus);
+      const launchedJobs = [
+        {
+          ...importJobTemplates[0],
+          executionId: uploadResponse.sellsJobExecutionId
+        },
+        {
+          ...importJobTemplates[1],
+          executionId: uploadResponse.otherIncomeJobExecutionId
+        }
+      ];
+      const initialStatuses = await Promise.all(
+        launchedJobs.map(async (job) => ({
+          ...job,
+          status: await fetchJobStatus(job.executionId)
+        }))
+      );
 
-      if (terminalStatuses.has(initialStatus.status)) {
+      setJobStatuses(initialStatuses);
+
+      if (initialStatuses.every((job) => job.status && terminalStatuses.has(job.status.status))) {
         setUploading(false);
-        if (initialStatus.status === "COMPLETED") {
+        if (initialStatuses.every((job) => job.status?.status === "COMPLETED")) {
           await loadTables();
+        } else {
+          const failureMessage = buildFailureMessage(initialStatuses);
+          if (failureMessage) {
+            setErrorMessage(failureMessage);
+          }
         }
       }
     } catch (error) {
@@ -224,12 +302,7 @@ export default function App() {
     ? `${selectedFile.name} (${Math.max(1, Math.round(selectedFile.size / 1024))} KB)`
     : "Drop a CSV here or browse from disk";
 
-  const visibleSteps = jobStatus?.steps.length
-    ? jobStatus.steps
-    : [
-        { stepName: "sellsStep", status: "WAITING", readCount: 0, writeCount: 0, commitCount: 0 },
-        { stepName: "otherIncomeStep", status: "WAITING", readCount: 0, writeCount: 0, commitCount: 0 }
-      ];
+  const importStatus = aggregateImportStatus(jobStatuses);
 
   return (
     <div className="app-shell">
@@ -255,7 +328,7 @@ export default function App() {
           <div className="section-heading">
             <div>
               <p className="section-kicker">1. Upload</p>
-              <h2>Send a statement and start a batch run.</h2>
+              <h2>Send a statement and start two batch runs.</h2>
             </div>
             <button className="secondary-button" type="button" onClick={() => void loadTables()}>
               Refresh tables
@@ -322,51 +395,85 @@ export default function App() {
           <div className="section-heading compact">
             <div>
               <p className="section-kicker">2. Batch status</p>
-              <h2>Track the current Spring Batch execution.</h2>
+              <h2>Track the current Spring Batch executions.</h2>
             </div>
           </div>
 
           <div className="status-chip-row">
-            <div className={`status-chip status-${jobStatus?.status?.toLowerCase() ?? "idle"}`}>
-              {jobStatus?.status ?? "Idle"}
+            <div className={`status-chip status-${importStatus.toLowerCase()}`}>
+              {importStatus}
             </div>
-            {jobStatus ? <span className="muted">Execution #{jobStatus.executionId}</span> : null}
+            {jobStatuses.length ? <span className="muted">{jobStatuses.length} jobs launched</span> : null}
           </div>
 
-          <dl className="status-metadata">
-            <div>
-              <dt>Created</dt>
-              <dd>{formatDateTime(jobStatus?.createTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Started</dt>
-              <dd>{formatDateTime(jobStatus?.startTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Finished</dt>
-              <dd>{formatDateTime(jobStatus?.endTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Exit code</dt>
-              <dd>{jobStatus?.exitCode ?? "N/A"}</dd>
-            </div>
-          </dl>
+          {jobStatuses.length ? (
+            <div className="job-status-list">
+              {jobStatuses.map((job) => {
+                const steps = job.status?.steps.length
+                  ? job.status.steps
+                  : [
+                      {
+                        stepName: job.defaultStepName,
+                        status: "WAITING",
+                        readCount: 0,
+                        writeCount: 0,
+                        commitCount: 0
+                      }
+                    ];
 
-          <div className="step-list">
-            {visibleSteps.map((step) => (
-              <article key={step.stepName} className="step-item">
-                <div className="step-header">
-                  <strong>{step.stepName}</strong>
-                  <span>{step.status}</span>
-                </div>
-                <div className="step-stats">
-                  <span>Read {step.readCount}</span>
-                  <span>Written {step.writeCount}</span>
-                  <span>Commits {step.commitCount}</span>
-                </div>
-              </article>
-            ))}
-          </div>
+                return (
+                  <article key={job.key} className="job-status-card">
+                    <div className="job-status-header">
+                      <div>
+                        <strong>{job.label}</strong>
+                        <div className="muted">Execution #{job.executionId}</div>
+                      </div>
+                      <div className={`status-chip status-${job.status?.status?.toLowerCase() ?? "idle"}`}>
+                        {job.status?.status ?? "IDLE"}
+                      </div>
+                    </div>
+
+                    <dl className="status-metadata">
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{formatDateTime(job.status?.createTime ?? null)}</dd>
+                      </div>
+                      <div>
+                        <dt>Started</dt>
+                        <dd>{formatDateTime(job.status?.startTime ?? null)}</dd>
+                      </div>
+                      <div>
+                        <dt>Finished</dt>
+                        <dd>{formatDateTime(job.status?.endTime ?? null)}</dd>
+                      </div>
+                      <div>
+                        <dt>Exit code</dt>
+                        <dd>{job.status?.exitCode ?? "N/A"}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="step-list">
+                      {steps.map((step) => (
+                        <article key={`${job.key}-${step.stepName}`} className="step-item">
+                          <div className="step-header">
+                            <strong>{step.stepName}</strong>
+                            <span>{step.status}</span>
+                          </div>
+                          <div className="step-stats">
+                            <span>Read {step.readCount}</span>
+                            <span>Written {step.writeCount}</span>
+                            <span>Commits {step.commitCount}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted">No import launched yet.</p>
+          )}
         </section>
       </main>
 

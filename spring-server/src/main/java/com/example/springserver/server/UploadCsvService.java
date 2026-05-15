@@ -1,7 +1,9 @@
 package com.example.springserver.server;
 
 import com.example.springserver.server.dto.UploadCsvInputDto;
-import com.example.springserver.server.jobs.CsvBatchConfig;
+import com.example.springserver.server.dto.UploadCsvJobLaunchResult;
+import com.example.springserver.server.jobs.OtherIncomeBatchConfig;
+import com.example.springserver.server.jobs.SellsBatchConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
@@ -16,22 +18,34 @@ import java.io.IOException;
 public class UploadCsvService {
 
     private final JobLauncher jobLauncher;
-    private final CsvBatchConfig csvBatchConfig;
+    private final SellsBatchConfig sellsBatchConfig;
+    private final OtherIncomeBatchConfig otherIncomeBatchConfig;
 
-    public long uploadCsv(UploadCsvInputDto input) {
+    public UploadCsvJobLaunchResult uploadCsv(UploadCsvInputDto input) {
         try {
             byte[] csvBytes = input.getFile().getBytes();
-            Job job = csvBatchConfig.processCsvJob(csvBytes);
-            JobParameters params = new JobParametersBuilder()
-                    .addString("name", input.getName())
-                    .addLong("timestamp", System.currentTimeMillis())
-                    .toJobParameters();
-            var execution = jobLauncher.run(job, params);
-            return execution.getId();
+            long launchId = System.currentTimeMillis();
+
+            Job sellsJob = sellsBatchConfig.processSellsCsvJob(csvBytes);
+            JobParameters sellsParams = buildJobParameters(input.getName(), launchId);
+            var sellsExecution = jobLauncher.run(sellsJob, sellsParams);
+
+            Job otherIncomeJob = otherIncomeBatchConfig.processOtherIncomeCsvJob(csvBytes);
+            JobParameters otherIncomeParams = buildJobParameters(input.getName(), launchId);
+            var otherIncomeExecution = jobLauncher.run(otherIncomeJob, otherIncomeParams);
+
+            return new UploadCsvJobLaunchResult(sellsExecution.getId(), otherIncomeExecution.getId());
         } catch (IOException e) {
             throw new RuntimeException("Failed to read uploaded file", e);
         } catch (Exception e) {
             throw new RuntimeException("Failed to launch batch job", e);
         }
+    }
+
+    private JobParameters buildJobParameters(String name, long launchId) {
+        return new JobParametersBuilder()
+                .addString("name", name)
+                .addLong("timestamp", launchId)
+                .toJobParameters();
     }
 }

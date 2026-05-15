@@ -1,6 +1,6 @@
 # trading-tax-calculator-ai
 
-This repository contains a Spring Boot ingestion service and a React + TypeScript frontend for loading broker CSV statements, starting a Spring Batch import, and reviewing the imported database rows in AG Grid.
+This repository contains a Spring Boot ingestion service and a React + TypeScript frontend for loading broker CSV statements, starting parallel Spring Batch imports, and reviewing the imported database rows in AG Grid.
 
 The broader AI-assisted tax calculator described in older repo notes is still not implemented in the current application code. The runnable surface in this checkout is the CSV ingestion workflow and its database views.
 
@@ -27,6 +27,7 @@ The broader AI-assisted tax calculator described in older repo notes is still no
    - `database-setup/version2/01_create_income_from_sells_table.sql`
    - `database-setup/version2/02_create_other_income_fees_table copy.sql`
    - `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
+   - `database-setup/version3/01_expand_symbol_column_lengths.sql`
 3. Start the backend:
    ```bash
    cd spring-server
@@ -50,7 +51,7 @@ Backend:  http://localhost:8080/spring-boot-api
 
 1. Open the frontend.
 2. Drop a CSV file into the upload zone.
-3. Start the import and wait for the batch job to complete.
+3. Start the import and wait for both batch jobs to complete.
 4. Review `app.income_from_sells` and `app.other_income_fees` in the two AG Grid views.
 
 ## Repository layout

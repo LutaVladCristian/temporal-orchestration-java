@@ -19,7 +19,7 @@ The local frontend proxies this base path from `http://localhost:5173`.
 
 ### `POST /upload-csv`
 
-Uploads a trading statement CSV and queues a Spring Batch job.
+Uploads a trading statement CSV and queues two Spring Batch jobs in parallel.
 
 #### Form fields
 
@@ -38,21 +38,25 @@ curl -X POST http://localhost:8080/spring-boot-api/upload-csv \
 
 ```json
 {
-  "jobExecutionId": 123,
+  "sellsJobExecutionId": 123,
+  "otherIncomeJobExecutionId": 124,
   "statementName": "2025 tax year"
 }
 ```
 
 #### Notes
 
-- The controller returns as soon as the batch execution is launched.
-- The backend reads the uploaded file fully into memory before creating the batch job.
+- The controller returns as soon as both batch executions are launched.
+- The backend reads the uploaded file fully into memory before creating the batch jobs.
+- The upload currently launches `processSellsCsvJob` and `processOtherIncomeCsvJob`.
 - The `name` parameter is currently only included in job parameters and echoed in the response. It is not persisted in the database.
 - Multipart upload limits are `10MB` for both the file and request size.
 
 ### `GET /job-status/{executionId}`
 
 Returns the current Spring Batch execution status for a previously started job.
+
+The endpoint remains single-execution. After an upload, the frontend calls it once for `sellsJobExecutionId` and once for `otherIncomeJobExecutionId`.
 
 #### Example
 
@@ -65,7 +69,7 @@ curl http://localhost:8080/spring-boot-api/job-status/123
 ```json
 {
   "executionId": 123,
-  "jobName": "processCsvJob",
+  "jobName": "processSellsCsvJob",
   "status": "STARTED",
   "exitCode": "EXECUTING",
   "createTime": "2026-05-15T12:23:11.038",
@@ -75,17 +79,10 @@ curl http://localhost:8080/spring-boot-api/job-status/123
   "steps": [
     {
       "stepName": "sellsStep",
-      "status": "COMPLETED",
-      "readCount": 35,
-      "writeCount": 35,
-      "commitCount": 4
-    },
-    {
-      "stepName": "otherIncomeStep",
       "status": "STARTED",
-      "readCount": 2,
-      "writeCount": 0,
-      "commitCount": 0
+      "readCount": 35,
+      "writeCount": 30,
+      "commitCount": 3
     }
   ],
   "failureMessages": []

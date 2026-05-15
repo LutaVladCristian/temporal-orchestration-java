@@ -1,7 +1,8 @@
 package com.example.springserver.server.dto;
 
 public record UploadCsvResponseDto(
-        Long jobExecutionId,
+        Long sellsJobExecutionId,
+        Long otherIncomeJobExecutionId,
         String statementName
 ) {
 }

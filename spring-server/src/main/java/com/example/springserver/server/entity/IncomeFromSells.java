@@ -27,7 +27,7 @@ public class IncomeFromSells {
     @Column(name = "date_sold", nullable = false)
     private LocalDate dateSold;
 
-    @Column(name = "symbol", nullable = false, length = 10)
+    @Column(name = "symbol", nullable = false, length = 32)
     private String symbol;
 
     @Column(name = "security_name", nullable = false)

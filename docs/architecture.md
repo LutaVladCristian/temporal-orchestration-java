@@ -12,9 +12,11 @@ The implemented system is a UI-driven ingestion workflow backed by a relational 
 React UI
   -> UploadCsvController
   -> UploadCsvService
-  -> async Spring Batch job
-     -> sells step
-     -> other income step
+  -> async Spring Batch jobs
+     -> sells job
+        -> sells step
+     -> other income job
+        -> other income step
   -> JPA repositories
   -> PostgreSQL
   -> AG Grid data views
@@ -62,24 +64,27 @@ Responsibilities:
 
 - `UploadCsvService`
   - reads the uploaded `MultipartFile`
-  - builds a batch job from the uploaded byte array
-  - launches the job with a timestamped job parameter set
+  - builds two one-step jobs from the uploaded byte array
+  - launches both jobs with a shared timestamped parameter set
 
 ### Batch infrastructure
 
 - `BatchInfrastructureConfig`
   - provides an async `JobLauncher` backed by `SimpleAsyncTaskExecutor`
-  - allows the UI to receive a job execution id immediately and poll for progress
+  - allows the UI to receive two job execution ids immediately and poll for progress
 
 ### Batch processing layer
 
-- `CsvBatchConfig`
-  - splits the uploaded CSV into named sections
-  - runs a two-step job:
-    - `sellsStep`
-    - `otherIncomeStep`
-  - maps each row into JPA entities
-  - persists rows through repository writers
+- `SellsBatchConfig`
+  - builds `processSellsCsvJob`
+  - maps sell rows into `IncomeFromSells`
+  - persists rows through `IncomeFromSellsRepository`
+- `OtherIncomeBatchConfig`
+  - builds `processOtherIncomeCsvJob`
+  - maps other-income rows into `OtherIncomeFees`
+  - persists rows through `OtherIncomeFeesRepository`
+- `CsvSectionExtractor`
+  - splits the uploaded CSV into named sections shared by both job configs
 
 ### Persistence layer
 
@@ -106,11 +111,11 @@ Responsibilities:
 1. The frontend sends multipart form data with `name` and `file`.
 2. `UploadCsvController` builds `UploadCsvInputDto`.
 3. `UploadCsvService` reads the file into memory as `byte[]`.
-4. `CsvBatchConfig.processCsvJob(csvBytes)` creates a job instance bound to that upload.
-5. `TaskExecutorJobLauncher` starts the batch job asynchronously.
-6. The controller returns `jobExecutionId` immediately.
-7. The frontend polls `GET /job-status/{executionId}` until the job reaches a terminal status.
-8. The frontend refreshes the two read endpoints and shows the imported rows in AG Grid.
+4. `SellsBatchConfig` and `OtherIncomeBatchConfig` create one job each for that upload.
+5. `TaskExecutorJobLauncher` starts both jobs asynchronously.
+6. The controller returns both execution ids immediately.
+7. The frontend polls `GET /job-status/{executionId}` for both jobs until they reach terminal statuses.
+8. When both jobs complete successfully, the frontend refreshes the two read endpoints and shows the imported rows in AG Grid.
 
 ### CSV parsing approach
 
@@ -166,9 +171,9 @@ The initial database script sets `search_path` to `app, batch, public` so the cu
 
 ## Notable implementation details
 
-- The batch job is launched programmatically; `spring.batch.job.enabled=false` only disables auto-run at startup.
+- The batch jobs are launched programmatically; `spring.batch.job.enabled=false` only disables auto-run at startup.
 - Uploaded CSV files are processed fully in memory as `byte[]`.
-- The async job launcher uses `SimpleAsyncTaskExecutor`, so job execution is decoupled from the HTTP request thread.
+- The async job launcher uses `SimpleAsyncTaskExecutor`, so both job executions are decoupled from the HTTP request thread and can run in parallel.
 - CORS accepts localhost origins on arbitrary ports to support local Vite dev servers.
 - Schema management is manual. Hibernate DDL is disabled with `spring.jpa.hibernate.ddl-auto=none`.
 - The initial setup script assumes `psql` because it uses `\connect`.
