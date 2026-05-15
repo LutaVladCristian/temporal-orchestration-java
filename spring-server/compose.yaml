@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:17
+    container_name: my-postgres-container
+    environment:
+      POSTGRES_DB: server_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: MyStrongP@ssword1
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: my-spring-server-container
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/server_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: MyStrongP@ssword1
+
+
+volumes:
+  pgdata:
