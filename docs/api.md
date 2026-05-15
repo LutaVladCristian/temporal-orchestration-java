@@ -8,6 +8,8 @@ Local default:
 http://localhost:8080/spring-boot-api
 ```
 
+The local frontend proxies this base path from `http://localhost:5173`.
+
 ## Content types
 
 - Upload endpoint: `multipart/form-data`
@@ -17,7 +19,7 @@ http://localhost:8080/spring-boot-api
 
 ### `POST /upload-csv`
 
-Uploads a trading statement CSV and starts a Spring Batch job.
+Uploads a trading statement CSV and queues a Spring Batch job.
 
 #### Form fields
 
@@ -36,18 +38,21 @@ curl -X POST http://localhost:8080/spring-boot-api/upload-csv \
 
 ```json
 {
-  "jobExecutionId": 123
+  "jobExecutionId": 123,
+  "statementName": "2025 tax year"
 }
 ```
 
 #### Notes
 
+- The controller returns as soon as the batch execution is launched.
 - The backend reads the uploaded file fully into memory before creating the batch job.
-- The `name` parameter is currently only included in job parameters. It is not persisted in the database.
+- The `name` parameter is currently only included in job parameters and echoed in the response. It is not persisted in the database.
+- Multipart upload limits are `10MB` for both the file and request size.
 
 ### `GET /job-status/{executionId}`
 
-Returns the Spring Batch execution status for a previously started job.
+Returns the current Spring Batch execution status for a previously started job.
 
 #### Example
 
@@ -59,7 +64,31 @@ curl http://localhost:8080/spring-boot-api/job-status/123
 
 ```json
 {
-  "status": "COMPLETED"
+  "executionId": 123,
+  "jobName": "processCsvJob",
+  "status": "STARTED",
+  "exitCode": "EXECUTING",
+  "createTime": "2026-05-15T12:23:11.038",
+  "startTime": "2026-05-15T12:23:11.139",
+  "endTime": null,
+  "lastUpdated": "2026-05-15T12:23:11.201",
+  "steps": [
+    {
+      "stepName": "sellsStep",
+      "status": "COMPLETED",
+      "readCount": 35,
+      "writeCount": 35,
+      "commitCount": 4
+    },
+    {
+      "stepName": "otherIncomeStep",
+      "status": "STARTED",
+      "readCount": 2,
+      "writeCount": 0,
+      "commitCount": 0
+    }
+  ],
+  "failureMessages": []
 }
 ```
 
@@ -70,6 +99,7 @@ curl http://localhost:8080/spring-boot-api/job-status/123
 - `COMPLETED`
 - `FAILED`
 - `STOPPED`
+- `ABANDONED`
 
 #### Error response
 
@@ -77,7 +107,7 @@ curl http://localhost:8080/spring-boot-api/job-status/123
 
 ### `GET /income-from-sells`
 
-Returns all persisted sale rows.
+Returns all persisted sale rows, ordered by `dateSold DESC, id DESC`.
 
 #### Example response
 
@@ -102,7 +132,7 @@ Returns all persisted sale rows.
 
 ### `GET /other-income-fees`
 
-Returns all persisted non-sale income rows.
+Returns all persisted non-sale income rows, ordered by `date DESC, id DESC`.
 
 #### Example response
 

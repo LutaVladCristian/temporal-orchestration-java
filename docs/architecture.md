@@ -2,26 +2,42 @@
 
 ## Current scope
 
-This repository currently contains a Spring Boot backend that ingests broker CSV statements, parses them with Spring Batch, and persists normalized rows into PostgreSQL.
-
-The larger product direction described in repo notes is an AI-assisted trading tax calculator using MCP and RAG. That layer is not present in the current application code. In the current checkout, the previously referenced `frontend/` application is also deleted from the working tree.
+This repository currently contains a React frontend and a Spring Boot backend that ingest broker CSV statements, parse them with Spring Batch, persist normalized rows into PostgreSQL, and expose the stored rows for UI review.
 
 ## System context
 
-The implemented system is a backend ingestion service with a relational database:
+The implemented system is a UI-driven ingestion workflow backed by a relational database:
 
 ```text
-CSV statement upload
+React UI
   -> UploadCsvController
   -> UploadCsvService
-  -> Spring Batch job
+  -> async Spring Batch job
      -> sells step
      -> other income step
   -> JPA repositories
   -> PostgreSQL
+  -> AG Grid data views
 ```
 
 ## Main components
+
+### Frontend application
+
+- Location: `frontend/`
+- Stack:
+  - React
+  - TypeScript
+  - Vite
+  - AG Grid Community
+
+Responsibilities:
+
+- drag-and-drop CSV upload
+- statement naming
+- batch job polling
+- summary metrics for imported rows
+- two separate AG Grid views for the persisted tables
 
 ### Spring Boot application
 
@@ -45,19 +61,25 @@ CSV statement upload
 ### Service layer
 
 - `UploadCsvService`
-  - Reads the uploaded `MultipartFile`
-  - Builds a batch job from the uploaded byte array
-  - Launches the job with a timestamped job parameter set
+  - reads the uploaded `MultipartFile`
+  - builds a batch job from the uploaded byte array
+  - launches the job with a timestamped job parameter set
 
-### Batch layer
+### Batch infrastructure
+
+- `BatchInfrastructureConfig`
+  - provides an async `JobLauncher` backed by `SimpleAsyncTaskExecutor`
+  - allows the UI to receive a job execution id immediately and poll for progress
+
+### Batch processing layer
 
 - `CsvBatchConfig`
-  - Splits the uploaded CSV into named sections
-  - Runs a two-step job:
+  - splits the uploaded CSV into named sections
+  - runs a two-step job:
     - `sellsStep`
     - `otherIncomeStep`
-  - Maps each row into JPA entities
-  - Persists rows through repository writers
+  - maps each row into JPA entities
+  - persists rows through repository writers
 
 ### Persistence layer
 
@@ -73,20 +95,22 @@ CSV statement upload
 - Engine: PostgreSQL 17
 - Local/container orchestration: `spring-server/compose.yaml`
 - Migration scripts: `database-setup/`
+- Schemas:
+  - `app` for ingestion tables
+  - `batch` for Spring Batch metadata
 
 ## Request and processing flow
 
 ### CSV upload flow
 
-1. Client sends multipart form data with `name` and `file`.
+1. The frontend sends multipart form data with `name` and `file`.
 2. `UploadCsvController` builds `UploadCsvInputDto`.
 3. `UploadCsvService` reads the file into memory as `byte[]`.
 4. `CsvBatchConfig.processCsvJob(csvBytes)` creates a job instance bound to that upload.
-5. Spring Batch runs:
-   - `sellsStep`: parses `Income from Sells`
-   - `otherIncomeStep`: parses `Other income & fees`
-6. Rows are saved through Spring Data repositories.
-7. Client can poll job status by execution id.
+5. `TaskExecutorJobLauncher` starts the batch job asynchronously.
+6. The controller returns `jobExecutionId` immediately.
+7. The frontend polls `GET /job-status/{executionId}` until the job reaches a terminal status.
+8. The frontend refreshes the two read endpoints and shows the imported rows in AG Grid.
 
 ### CSV parsing approach
 
@@ -130,12 +154,24 @@ Captures non-sale rows such as dividends and fee-like income records:
 - net amount
 - currency
 
+### Schema layout
+
+The repository SQL setup uses a single PostgreSQL database, `server_db`, with:
+
+- `app.income_from_sells`
+- `app.other_income_fees`
+- `batch.*` Spring Batch metadata tables and sequences
+
+The initial database script sets `search_path` to `app, batch, public` so the current JPA mappings and Spring Batch defaults continue to work without schema-qualified table names in the Java code.
+
 ## Notable implementation details
 
 - The batch job is launched programmatically; `spring.batch.job.enabled=false` only disables auto-run at startup.
 - Uploaded CSV files are processed fully in memory as `byte[]`.
-- CORS is open only to `http://localhost:5173`.
+- The async job launcher uses `SimpleAsyncTaskExecutor`, so job execution is decoupled from the HTTP request thread.
+- CORS accepts localhost origins on arbitrary ports to support local Vite dev servers.
 - Schema management is manual. Hibernate DDL is disabled with `spring.jpa.hibernate.ddl-auto=none`.
+- The initial setup script assumes `psql` because it uses `\connect`.
 
 ## Gaps and risks
 
@@ -144,14 +180,13 @@ Captures non-sale rows such as dividends and fee-like income records:
 - No authentication or authorization
 - No AI/MCP/RAG layer in the current code
 - No tax rule engine or jurisdiction-specific calculation logic
-- No currently present frontend in this checkout
 
 ### Operational gaps
 
 - No automated application table bootstrap beyond container-created `server_db`
-- No Spring Batch metadata migration scripts in the repository
+- No migration runner; schema creation still depends on manually applying the repository SQL scripts
 - No readiness handling between app startup and PostgreSQL readiness in `compose.yaml`
-- Minimal test coverage: only a context load test exists
+- Minimal backend test coverage: only a context load test exists
 
 ### Code and schema inconsistencies
 

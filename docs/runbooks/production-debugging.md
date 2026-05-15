@@ -48,10 +48,16 @@ Verify:
 
 Confirm the application tables exist:
 
-- `income_from_sells`
-- `other_income_fees`
+- `app.income_from_sells`
+- `app.other_income_fees`
 
 Also confirm Spring Batch metadata tables exist if batch job execution is failing during repository initialization.
+
+At minimum, confirm:
+
+- `batch.batch_job_instance`
+- `batch.batch_job_execution`
+- `batch.batch_step_execution`
 
 ## Common failure modes
 
@@ -64,7 +70,7 @@ Symptoms:
 
 Action:
 
-- run the repository SQL migrations against `server_db`
+- run the repository SQL scripts against `server_db`
 
 ### Missing Spring Batch metadata tables
 
@@ -75,7 +81,7 @@ Symptoms:
 
 Action:
 
-- provision Spring Batch schema for PostgreSQL
+- apply `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
 - decide whether schema creation belongs in migrations or startup automation
 
 ### CSV format drift
@@ -110,15 +116,15 @@ Action:
 Useful checks after a reported import:
 
 ```sql
-SELECT COUNT(*) FROM income_from_sells;
-SELECT COUNT(*) FROM other_income_fees;
+SELECT COUNT(*) FROM app.income_from_sells;
+SELECT COUNT(*) FROM app.other_income_fees;
 ```
 
 Spot-check recent rows:
 
 ```sql
-SELECT * FROM income_from_sells ORDER BY id DESC LIMIT 20;
-SELECT * FROM other_income_fees ORDER BY id DESC LIMIT 20;
+SELECT * FROM app.income_from_sells ORDER BY id DESC LIMIT 20;
+SELECT * FROM app.other_income_fees ORDER BY id DESC LIMIT 20;
 ```
 
 ## Hardening follow-ups

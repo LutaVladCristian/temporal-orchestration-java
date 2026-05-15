@@ -62,8 +62,22 @@ The compose file creates `server_db`, but the repo instructions still require ma
 This is important because:
 
 - Hibernate DDL is disabled
-- app tables are not auto-created
+- app tables and schemas are not auto-created
 - Spring Batch schema auto-init is disabled with `spring.batch.jdbc.initialize-schema=never`
+
+Apply the scripts in order:
+
+1. `database-setup/version1/01_initial_set_up.sql`
+2. `database-setup/version2/01_create_income_from_sells_table.sql`
+3. `database-setup/version2/02_create_other_income_fees_table copy.sql`
+4. `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
+
+The initial setup script uses `psql` meta-commands and creates:
+
+- database `server_db`
+- schema `app`
+- schema `batch`
+- database `search_path` of `app, batch, public`
 
 ## Production concerns
 
@@ -79,7 +93,7 @@ Passwords are committed in local defaults and compose config. Replace them with 
 
 ### Batch metadata schema
 
-Spring Batch typically requires metadata tables. The repository does not include explicit PostgreSQL migration scripts for them, and auto-init is disabled. A deployment plan needs to address that before batch execution can be considered reliable.
+Spring Batch requires metadata tables. The repository includes an explicit PostgreSQL SQL script for them in `database-setup/version2/03_create_spring_batch_metadata_tables.sql`, but a deployment plan still needs to ensure that script is applied consistently.
 
 ### Persistence and backup
 
