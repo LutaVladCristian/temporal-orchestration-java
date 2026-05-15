@@ -4,7 +4,7 @@
 
 The repository currently supports a simple containerized local deployment for:
 
-- Microsoft SQL Server 2022
+- PostgreSQL 17
 - Spring Boot backend
 
 There is no committed production deployment configuration, no reverse proxy config, and no infrastructure-as-code in this repository.
@@ -52,12 +52,12 @@ docker compose up -d --build
 
 ### 3. Verify services
 
-- SQL Server should listen on `localhost:1433`
+- PostgreSQL should listen on `localhost:5432`
 - Backend should listen on `localhost:8080`
 
 ## Database bootstrap requirements
 
-The compose file does not create `SERVER_DB` for you in a reliable, application-owned way. The repo instructions still require manual database creation and manual execution of SQL scripts under `database-setup/`.
+The compose file creates `server_db`, but the repo instructions still require manual execution of SQL scripts under `database-setup/`.
 
 This is important because:
 
@@ -71,7 +71,7 @@ The current compose setup is not production-ready.
 
 ### Database startup sequencing
 
-`depends_on` only guarantees container start order, not database readiness. The backend can still start before SQL Server is accepting connections.
+`depends_on` only guarantees container start order, not database readiness. The backend can still start before PostgreSQL is accepting connections.
 
 ### Secrets
 
@@ -79,11 +79,11 @@ Passwords are committed in local defaults and compose config. Replace them with 
 
 ### Batch metadata schema
 
-Spring Batch typically requires metadata tables. The repository does not include explicit SQL Server migration scripts for them, and auto-init is disabled. A deployment plan needs to address that before batch execution can be considered reliable.
+Spring Batch typically requires metadata tables. The repository does not include explicit PostgreSQL migration scripts for them, and auto-init is disabled. A deployment plan needs to address that before batch execution can be considered reliable.
 
 ### Persistence and backup
 
-The compose volume `mssqldata` persists the SQL Server data directory locally, but there is no backup, retention, or restore procedure in the repository.
+The compose volume `pgdata` persists the PostgreSQL data directory locally, but there is no backup, retention, or restore procedure in the repository.
 
 ## Recommended production baseline
 

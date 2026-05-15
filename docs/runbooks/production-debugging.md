@@ -2,7 +2,7 @@
 
 ## Scope
 
-This repository does not contain a full production deployment stack. This runbook treats "production" as any long-running deployment of the Spring Boot backend with SQL Server behind it.
+This repository does not contain a full production deployment stack. This runbook treats "production" as any long-running deployment of the Spring Boot backend with PostgreSQL behind it.
 
 ## First triage checklist
 
@@ -30,7 +30,7 @@ This repository does not contain a full production deployment stack. This runboo
 Prioritize:
 
 - Spring Batch exceptions
-- SQL Server connection failures
+- PostgreSQL connection failures
 - CSV parsing and type conversion errors
 - startup failures tied to missing tables
 
@@ -40,8 +40,8 @@ Prioritize:
 
 Verify:
 
-- SQL Server process is healthy
-- target database is `SERVER_DB`
+- PostgreSQL process is healthy
+- target database is `server_db`
 - credentials are correct
 
 ### Schema presence
@@ -64,7 +64,7 @@ Symptoms:
 
 Action:
 
-- run the repository SQL migrations against `SERVER_DB`
+- run the repository SQL migrations against `server_db`
 
 ### Missing Spring Batch metadata tables
 
@@ -75,7 +75,7 @@ Symptoms:
 
 Action:
 
-- provision Spring Batch schema for SQL Server
+- provision Spring Batch schema for PostgreSQL
 - decide whether schema creation belongs in migrations or startup automation
 
 ### CSV format drift
@@ -94,7 +94,7 @@ Action:
   - `Other income & fees`
 - verify a blank line separates sections
 
-### SQL Server readiness race
+### PostgreSQL readiness race
 
 Symptoms:
 
@@ -102,7 +102,7 @@ Symptoms:
 
 Action:
 
-- restart the backend after SQL Server is fully ready
+- restart the backend after PostgreSQL is fully ready
 - add health checks and readiness logic to the deployment
 
 ## Data validation queries
@@ -117,8 +117,8 @@ SELECT COUNT(*) FROM other_income_fees;
 Spot-check recent rows:
 
 ```sql
-SELECT TOP 20 * FROM income_from_sells ORDER BY id DESC;
-SELECT TOP 20 * FROM other_income_fees ORDER BY id DESC;
+SELECT * FROM income_from_sells ORDER BY id DESC LIMIT 20;
+SELECT * FROM other_income_fees ORDER BY id DESC LIMIT 20;
 ```
 
 ## Hardening follow-ups

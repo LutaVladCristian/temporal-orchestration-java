@@ -2,14 +2,14 @@
 
 ## Scope
 
-This runbook covers local setup for the backend and SQL Server based on the current repository state.
+This runbook covers local setup for the backend and PostgreSQL based on the current repository state.
 
 ## Prerequisites
 
 - Java 21
 - Maven available as `mvn`
 - Docker Desktop or equivalent Docker runtime
-- A SQL client if you want to inspect or create the database manually
+- A PostgreSQL client if you want to inspect the database manually
 
 ## Project layout
 
@@ -18,7 +18,7 @@ This runbook covers local setup for the backend and SQL Server based on the curr
 
 The previously referenced `frontend/` application is deleted in the current worktree, so these steps only cover the backend.
 
-## 1. Start SQL Server
+## 1. Start PostgreSQL
 
 From `spring-server/`:
 
@@ -26,24 +26,24 @@ From `spring-server/`:
 docker compose up -d
 ```
 
-## 2. Create the database
+## 2. Confirm the database
 
-Connect to the SQL Server container and create:
+The compose setup creates `server_db` automatically on first startup.
 
 ```sql
-CREATE DATABASE SERVER_DB;
+SELECT current_database();
 ```
 
 Connection defaults:
 
 - host: `localhost`
-- port: `1433`
-- user: `sa`
+- port: `5432`
+- user: `postgres`
 - password: `MyStrongP@ssword1`
 
 ## 3. Apply repository SQL scripts
 
-Run the scripts in `database-setup/` against `SERVER_DB`.
+Run the scripts in `database-setup/` against `server_db`.
 
 At minimum, that includes:
 
@@ -52,10 +52,10 @@ At minimum, that includes:
 
 ## 4. Verify backend configuration
 
-Current backend defaults in `application.properties` already point at local SQL Server:
+Current backend defaults in `application.properties` already point at local PostgreSQL:
 
-- `jdbc:sqlserver://localhost:1433;databaseName=SERVER_DB;encrypt=false;trustServerCertificate=true`
-- username `sa`
+- `jdbc:postgresql://localhost:5432/server_db`
+- username `postgres`
 - password `MyStrongP@ssword1`
 
 ## 5. Start the backend locally
@@ -90,13 +90,13 @@ curl http://localhost:8080/spring-boot-api/job-status/1
 
 ## Common local failures
 
-### App cannot connect to SQL Server
+### App cannot connect to PostgreSQL
 
 Check:
 
 - the `db` container is running
-- port `1433` is exposed
-- `SERVER_DB` exists
+- port `5432` is exposed
+- `server_db` exists
 - credentials match `application.properties`
 
 ### Upload starts but batch execution fails early
@@ -107,9 +107,9 @@ Likely causes:
 - Spring Batch metadata tables are missing
 - CSV format does not match the expected section headers or column layout
 
-### SQL Server starts but app still fails on startup
+### PostgreSQL starts but app still fails on startup
 
-The compose file has no readiness gate. Retry after SQL Server finishes initialization.
+The compose file has no readiness gate. Retry after PostgreSQL finishes initialization.
 
 ## Useful commands
 

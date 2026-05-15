@@ -2,14 +2,14 @@
 
 ## Scope
 
-This guide reflects the repository as it exists in the current checkout: a Spring Boot backend plus SQL Server setup scripts.
+This guide reflects the repository as it exists in the current checkout: a Spring Boot backend plus PostgreSQL setup scripts.
 
 ## Prerequisites
 
 - Java 21
 - Maven
 - Docker
-- SQL Server access for local setup
+- PostgreSQL access for local setup
 
 ## Setup
 

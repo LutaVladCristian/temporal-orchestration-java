@@ -2,7 +2,7 @@
 
 ## Current scope
 
-This repository currently contains a Spring Boot backend that ingests broker CSV statements, parses them with Spring Batch, and persists normalized rows into Microsoft SQL Server.
+This repository currently contains a Spring Boot backend that ingests broker CSV statements, parses them with Spring Batch, and persists normalized rows into PostgreSQL.
 
 The larger product direction described in repo notes is an AI-assisted trading tax calculator using MCP and RAG. That layer is not present in the current application code. In the current checkout, the previously referenced `frontend/` application is also deleted from the working tree.
 
@@ -18,7 +18,7 @@ CSV statement upload
      -> sells step
      -> other income step
   -> JPA repositories
-  -> SQL Server
+  -> PostgreSQL
 ```
 
 ## Main components
@@ -32,7 +32,7 @@ CSV statement upload
   - Spring Web
   - Spring Batch
   - Spring Data JPA
-  - Microsoft SQL Server JDBC driver
+  - PostgreSQL JDBC driver
 
 ### HTTP layer
 
@@ -70,7 +70,7 @@ CSV statement upload
 
 ### Database
 
-- Engine: Microsoft SQL Server 2022
+- Engine: PostgreSQL 17
 - Local/container orchestration: `spring-server/compose.yaml`
 - Migration scripts: `database-setup/`
 
@@ -148,9 +148,9 @@ Captures non-sale rows such as dividends and fee-like income records:
 
 ### Operational gaps
 
-- No automated database bootstrap for `SERVER_DB`
+- No automated application table bootstrap beyond container-created `server_db`
 - No Spring Batch metadata migration scripts in the repository
-- No readiness handling between app startup and SQL Server readiness in `compose.yaml`
+- No readiness handling between app startup and PostgreSQL readiness in `compose.yaml`
 - Minimal test coverage: only a context load test exists
 
 ### Code and schema inconsistencies

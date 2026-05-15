@@ -1,6 +1,6 @@
 # trading-tax-calculator-ai
 
-This repository currently contains a Spring Boot service that ingests trading statement CSV files, parses them with Spring Batch, and stores normalized rows in Microsoft SQL Server.
+This repository currently contains a Spring Boot service that ingests trading statement CSV files, parses them with Spring Batch, and stores normalized rows in PostgreSQL.
 
 The broader AI-assisted tax calculator described in older repo notes is not implemented in the current backend code. In this checkout, the previously referenced `frontend/` app is also deleted from the working tree, so the runnable surface is the backend and database setup.
 
@@ -18,13 +18,12 @@ The broader AI-assisted tax calculator described in older repo notes is not impl
 
 ## Quick start
 
-1. Start SQL Server from `spring-server/`:
+1. Start PostgreSQL from `spring-server/`:
    ```bash
    docker compose up -d
    ```
-2. Create `SERVER_DB`.
-3. Apply SQL scripts from `database-setup/`.
-4. Start the backend:
+2. Apply SQL scripts from `database-setup/` to `server_db`.
+3. Start the backend:
    ```bash
    cd spring-server
    mvn spring-boot:run

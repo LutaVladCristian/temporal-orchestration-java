@@ -1,4 +1,4 @@
-# 0002: Use Microsoft SQL Server as the System Database
+# 0002: Use PostgreSQL as the System Database
 
 - Status: accepted
 - Date: 2026-05-15
@@ -7,23 +7,23 @@
 
 The repository uses:
 
-- SQL Server JDBC driver
-- SQL Server dialect
-- SQL Server container image in compose
+- PostgreSQL JDBC driver
+- PostgreSQL dialect
+- PostgreSQL container image in compose
 - hand-written SQL migration scripts
 
 The application stores normalized transaction rows that fit a relational model and are later intended to support downstream tax analysis.
 
 ## Decision
 
-Use Microsoft SQL Server 2022 as the primary application database for local and containerized runtime.
+Use PostgreSQL 17 as the primary application database for local and containerized runtime.
 
 ## Rationale
 
-- the current code and configuration already target SQL Server directly
+- the current code and configuration now target PostgreSQL directly
 - the domain is strongly relational
 - JPA and Spring Batch both work naturally against a transactional SQL database
-- the repository already contains SQL Server-specific setup and operational assumptions
+- PostgreSQL has lower local setup friction and broader contributor familiarity
 
 ## Consequences
 
@@ -32,11 +32,12 @@ Use Microsoft SQL Server 2022 as the primary application database for local and 
 - straightforward fit for normalized financial records
 - mature JDBC and Spring support
 - local parity via Docker
+- simpler default local bootstrap through `POSTGRES_DB`
 
 ### Negative
 
 - manual schema setup is still required in this repository
-- SQL Server-specific setup raises contributor friction compared with lighter embedded options
+- PostgreSQL-specific setup still ties local workflows to Docker or an external database
 - type choices in the current schema, such as string storage for some monetary fields, still need cleanup
 
 ## Follow-up work
