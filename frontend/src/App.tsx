@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
 import {
+  fetchImportStatus,
   fetchIncomeFromSells,
-  fetchJobStatus,
   fetchOtherIncomeFees,
   type IncomeFromSellsRow,
-  type JobStatus,
+  type ImportStatus,
   type OtherIncomeFeesRow,
   uploadCsv
 } from "./api";
@@ -15,21 +15,9 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
 type GridView = "sells" | "other";
-type ImportJobKey = "sells" | "otherIncome";
-type TrackedJobStatus = {
-  key: ImportJobKey;
-  label: string;
-  executionId: number;
-  defaultStepName: string;
-  status: JobStatus | null;
-};
 
 const terminalStatuses = new Set(["COMPLETED", "FAILED", "STOPPED", "ABANDONED"]);
 const failedStatuses = new Set(["FAILED", "STOPPED", "ABANDONED"]);
-const importJobTemplates: Omit<TrackedJobStatus, "executionId" | "status">[] = [
-  { key: "sells", label: "Income from sells", defaultStepName: "sellsStep" },
-  { key: "otherIncome", label: "Other income & fees", defaultStepName: "otherIncomeStep" }
-];
 
 const defaultColDef: ColDef = {
   sortable: true,
@@ -61,31 +49,21 @@ function fileNameToStatementName(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
 }
 
-function buildFailureMessage(jobStatuses: TrackedJobStatus[]) {
-  return jobStatuses
-    .flatMap((job) => (job.status?.failureMessages ?? []).map((message) => `${job.label}: ${message}`))
-    .join(" | ");
-}
-
-function aggregateImportStatus(jobStatuses: TrackedJobStatus[]) {
-  if (!jobStatuses.length) {
+function aggregateImportStatus(importStatus: ImportStatus | null) {
+  if (!importStatus) {
     return "IDLE";
   }
 
-  if (jobStatuses.some((job) => job.status && failedStatuses.has(job.status.status))) {
+  if (failedStatuses.has(importStatus.status)) {
     return "FAILED";
   }
 
-  if (jobStatuses.every((job) => job.status?.status === "COMPLETED")) {
+  if (importStatus.status === "COMPLETED") {
     return "COMPLETED";
   }
 
-  if (jobStatuses.some((job) => job.status?.status === "STARTED")) {
+  if (importStatus.status === "RUNNING") {
     return "STARTED";
-  }
-
-  if (jobStatuses.some((job) => job.status?.status === "STARTING")) {
-    return "STARTING";
   }
 
   return "IDLE";
@@ -99,7 +77,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<GridView>("sells");
   const [sellsSearch, setSellsSearch] = useState("");
   const [otherSearch, setOtherSearch] = useState("");
-  const [jobStatuses, setJobStatuses] = useState<TrackedJobStatus[]>([]);
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -194,33 +172,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const activeJobs = jobStatuses.filter((job) => job.status && !terminalStatuses.has(job.status.status));
-    if (!activeJobs.length) {
+    if (!importStatus || terminalStatuses.has(importStatus.status)) {
       return undefined;
     }
 
     const intervalId = window.setInterval(async () => {
       try {
-        const nextStatuses = await Promise.all(
-          jobStatuses.map(async (job) => {
-            if (!job.status || terminalStatuses.has(job.status.status)) {
-              return job;
-            }
+        const nextStatus = await fetchImportStatus(importStatus.workflowId);
+        setImportStatus(nextStatus);
 
-            const nextStatus = await fetchJobStatus(job.executionId);
-            return { ...job, status: nextStatus };
-          })
-        );
-        setJobStatuses(nextStatuses);
-
-        if (nextStatuses.every((job) => job.status && terminalStatuses.has(job.status.status))) {
+        if (terminalStatuses.has(nextStatus.status)) {
           window.clearInterval(intervalId);
           setUploading(false);
 
-          if (nextStatuses.every((job) => job.status?.status === "COMPLETED")) {
+          if (nextStatus.status === "COMPLETED") {
             void loadTables();
           } else {
-            const failureMessage = buildFailureMessage(nextStatuses);
+            const failureMessage = nextStatus.failureMessages.join(" | ");
             if (failureMessage) {
               setErrorMessage(failureMessage);
             }
@@ -228,13 +196,13 @@ export default function App() {
         }
       } catch (error) {
         setUploading(false);
-        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the batch jobs.");
+        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the Temporal workflow.");
         window.clearInterval(intervalId);
       }
     }, 1500);
 
     return () => window.clearInterval(intervalId);
-  }, [jobStatuses]);
+  }, [importStatus]);
 
   function handleFileSelected(file: File | null) {
     if (!file) {
@@ -262,36 +230,19 @@ export default function App() {
 
     try {
       const uploadResponse = await uploadCsv(statementName.trim(), selectedFile);
-      const launchedJobs = [
-        {
-          ...importJobTemplates[0],
-          executionId: uploadResponse.sellsJobExecutionId
-        },
-        {
-          ...importJobTemplates[1],
-          executionId: uploadResponse.otherIncomeJobExecutionId
-        }
-      ];
-      const initialStatuses = await Promise.all(
-        launchedJobs.map(async (job) => ({
-          ...job,
-          status: await fetchJobStatus(job.executionId)
-        }))
-      );
-
-      setJobStatuses(initialStatuses);
-
-      if (initialStatuses.every((job) => job.status && terminalStatuses.has(job.status.status))) {
-        setUploading(false);
-        if (initialStatuses.every((job) => job.status?.status === "COMPLETED")) {
-          await loadTables();
-        } else {
-          const failureMessage = buildFailureMessage(initialStatuses);
-          if (failureMessage) {
-            setErrorMessage(failureMessage);
-          }
-        }
-      }
+      setImportStatus({
+        workflowId: uploadResponse.importWorkflowId,
+        statementName: uploadResponse.statementName,
+        status: "RUNNING",
+        createdAt: null,
+        startedAt: null,
+        completedAt: null,
+        steps: [
+          { stepName: "sellsStep", status: "RUNNING", readCount: 0, writeCount: 0 },
+          { stepName: "otherIncomeStep", status: "RUNNING", readCount: 0, writeCount: 0 }
+        ],
+        failureMessages: []
+      });
     } catch (error) {
       setUploading(false);
       setErrorMessage(error instanceof Error ? error.message : "Failed to upload CSV.");
@@ -302,7 +253,7 @@ export default function App() {
     ? `${selectedFile.name} (${Math.max(1, Math.round(selectedFile.size / 1024))} KB)`
     : "Drop a CSV here or browse from disk";
 
-  const importStatus = aggregateImportStatus(jobStatuses);
+  const importStatusSummary = aggregateImportStatus(importStatus);
 
   return (
     <div className="app-shell">
@@ -314,7 +265,7 @@ export default function App() {
         <div className="hero-meta">
           <div>
             <span>Backend</span>
-            <strong>Spring Batch + PostgreSQL</strong>
+            <strong>Temporal + PostgreSQL</strong>
           </div>
           <div>
             <span>Frontend</span>
@@ -394,82 +345,65 @@ export default function App() {
         <section className="section-panel status-panel">
           <div className="section-heading compact">
             <div>
-              <p className="section-kicker">2. Batch status</p>
-              <h2>Track the current Spring Batch executions.</h2>
+              <p className="section-kicker">2. Import status</p>
+              <h2>Track the current Temporal workflow execution.</h2>
             </div>
           </div>
 
           <div className="status-chip-row">
-            <div className={`status-chip status-${importStatus.toLowerCase()}`}>
-              {importStatus}
+            <div className={`status-chip status-${importStatusSummary.toLowerCase()}`}>
+              {importStatusSummary}
             </div>
-            {jobStatuses.length ? <span className="muted">{jobStatuses.length} jobs launched</span> : null}
+            {importStatus ? <span className="muted">Workflow {importStatus.workflowId}</span> : null}
           </div>
 
-          {jobStatuses.length ? (
+          {importStatus ? (
             <div className="job-status-list">
-              {jobStatuses.map((job) => {
-                const steps = job.status?.steps.length
-                  ? job.status.steps
-                  : [
-                      {
-                        stepName: job.defaultStepName,
-                        status: "WAITING",
-                        readCount: 0,
-                        writeCount: 0,
-                        commitCount: 0
-                      }
-                    ];
+              <article className="job-status-card">
+                <div className="job-status-header">
+                  <div>
+                    <strong>{importStatus.statementName}</strong>
+                    <div className="muted">{importStatus.workflowId}</div>
+                  </div>
+                  <div className={`status-chip status-${importStatus.status.toLowerCase()}`}>
+                    {importStatus.status}
+                  </div>
+                </div>
 
-                return (
-                  <article key={job.key} className="job-status-card">
-                    <div className="job-status-header">
-                      <div>
-                        <strong>{job.label}</strong>
-                        <div className="muted">Execution #{job.executionId}</div>
-                      </div>
-                      <div className={`status-chip status-${job.status?.status?.toLowerCase() ?? "idle"}`}>
-                        {job.status?.status ?? "IDLE"}
-                      </div>
-                    </div>
+                <dl className="status-metadata">
+                  <div>
+                    <dt>Created</dt>
+                    <dd>{formatDateTime(importStatus.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Started</dt>
+                    <dd>{formatDateTime(importStatus.startedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Finished</dt>
+                    <dd>{formatDateTime(importStatus.completedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Platform</dt>
+                    <dd>Temporal workflow</dd>
+                  </div>
+                </dl>
 
-                    <dl className="status-metadata">
-                      <div>
-                        <dt>Created</dt>
-                        <dd>{formatDateTime(job.status?.createTime ?? null)}</dd>
+                <div className="step-list">
+                  {importStatus.steps.map((step) => (
+                    <article key={step.stepName} className="step-item">
+                      <div className="step-header">
+                        <strong>{step.stepName}</strong>
+                        <span>{step.status}</span>
                       </div>
-                      <div>
-                        <dt>Started</dt>
-                        <dd>{formatDateTime(job.status?.startTime ?? null)}</dd>
+                      <div className="step-stats">
+                        <span>Read {step.readCount}</span>
+                        <span>Written {step.writeCount}</span>
                       </div>
-                      <div>
-                        <dt>Finished</dt>
-                        <dd>{formatDateTime(job.status?.endTime ?? null)}</dd>
-                      </div>
-                      <div>
-                        <dt>Exit code</dt>
-                        <dd>{job.status?.exitCode ?? "N/A"}</dd>
-                      </div>
-                    </dl>
-
-                    <div className="step-list">
-                      {steps.map((step) => (
-                        <article key={`${job.key}-${step.stepName}`} className="step-item">
-                          <div className="step-header">
-                            <strong>{step.stepName}</strong>
-                            <span>{step.status}</span>
-                          </div>
-                          <div className="step-stats">
-                            <span>Read {step.readCount}</span>
-                            <span>Written {step.writeCount}</span>
-                            <span>Commits {step.commitCount}</span>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </article>
-                );
-              })}
+                    </article>
+                  ))}
+                </div>
+              </article>
             </div>
           ) : (
             <p className="muted">No import launched yet.</p>

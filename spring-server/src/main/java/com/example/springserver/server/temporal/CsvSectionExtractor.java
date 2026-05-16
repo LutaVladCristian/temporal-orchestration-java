@@ -1,4 +1,4 @@
-package com.example.springserver.server.jobs;
+package com.example.springserver.server.temporal;
 
 import org.springframework.stereotype.Component;
 

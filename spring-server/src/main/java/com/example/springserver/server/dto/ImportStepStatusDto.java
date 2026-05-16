@@ -1,10 +1,9 @@
 package com.example.springserver.server.dto;
 
-public record JobStepStatusDto(
+public record ImportStepStatusDto(
         String stepName,
         String status,
         long readCount,
-        long writeCount,
-        long commitCount
+        long writeCount
 ) {
 }

@@ -22,7 +22,7 @@ Use PostgreSQL 17 as the primary application database for local and containerize
 
 - the current code and configuration now target PostgreSQL directly
 - the domain is strongly relational
-- JPA and Spring Batch both work naturally against a transactional SQL database
+- JPA and Temporal activities both work naturally against a transactional SQL database
 - PostgreSQL has lower local setup friction and broader contributor familiarity
 
 ## Consequences
@@ -43,5 +43,5 @@ Use PostgreSQL 17 as the primary application database for local and containerize
 ## Follow-up work
 
 - automate schema creation and migrations
-- add Spring Batch metadata schema management
+- clean up remaining Spring Batch-oriented configuration that no longer matches the Temporal import flow
 - tighten numeric typing for monetary columns

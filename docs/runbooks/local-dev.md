@@ -2,7 +2,7 @@
 
 ## Scope
 
-This runbook covers local setup for PostgreSQL, the Spring Boot backend, and the React frontend.
+This runbook covers local setup for PostgreSQL, the local Temporal service, the Spring Boot backend, and the React frontend.
 
 ## Prerequisites
 
@@ -11,6 +11,7 @@ This runbook covers local setup for PostgreSQL, the Spring Boot backend, and the
 - Node.js 22 or newer
 - npm
 - Docker Desktop or equivalent Docker runtime
+- Temporal CLI available as `temporal`
 - A PostgreSQL client if you want to inspect the database manually
 
 ## Project layout
@@ -24,7 +25,7 @@ This runbook covers local setup for PostgreSQL, the Spring Boot backend, and the
 From `spring-server/`:
 
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
 ## 2. Confirm the database
@@ -49,23 +50,45 @@ Run the scripts in `database-setup/` against `server_db` in this order:
 - `database-setup/version1/01_initial_set_up.sql`
 - `database-setup/version2/01_create_income_from_sells_table.sql`
 - `database-setup/version2/02_create_other_income_fees_table copy.sql`
-- `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
+- `database-setup/version3/01_expand_symbol_column_lengths.sql`
 
 Notes:
 
-- `01_initial_set_up.sql` is written for `psql` and uses `\connect`
-- the scripts create `app` and `batch` schemas
-- the database `search_path` is set to `app, batch, public`
+- `01_initial_set_up.sql` creates the `server_db` database
+- the version 2 scripts create the `app` schema tables
+- the committed SQL scripts do not provision Spring Batch metadata tables
 
-## 4. Verify backend configuration
+## 4. Start local Temporal
 
-Current backend defaults in `application.properties` already point at local PostgreSQL:
+In a separate terminal:
+
+```bash
+temporal server start-dev
+```
+
+Expected endpoints:
+
+```text
+Temporal gRPC: http://localhost:7233
+Temporal UI:   http://localhost:8233
+```
+
+## 5. Verify backend configuration
+
+Shared backend defaults now live in `spring-server/src/main/resources/application.yaml`.
+
+The local `application.properties` file carries only secret overrides for development. The current local PostgreSQL settings are:
 
 - `jdbc:postgresql://localhost:5432/server_db`
 - username `postgres`
 - password `MyStrongP@ssword1`
 
-## 5. Start the backend locally
+The backend also connects to the local Temporal namespace:
+
+- target `local`
+- namespace `default`
+
+## 6. Start the backend locally
 
 From `spring-server/`:
 
@@ -79,7 +102,7 @@ Expected base URL:
 http://localhost:8080/spring-boot-api
 ```
 
-## 6. Start the frontend locally
+## 7. Start the frontend locally
 
 From `frontend/`:
 
@@ -96,7 +119,7 @@ http://localhost:5173
 
 The Vite dev server proxies `/spring-boot-api` to `http://localhost:8080`.
 
-## 7. Test an upload
+## 8. Test an upload
 
 Option 1: use the frontend upload screen.
 
@@ -108,10 +131,10 @@ curl -X POST http://localhost:8080/spring-boot-api/upload-csv \
   -F "file=@src/main/resources/2025_tax_year_statement.csv"
 ```
 
-Then poll the returned job id:
+Then poll the returned workflow id:
 
 ```bash
-curl http://localhost:8080/spring-boot-api/job-status/1
+curl http://localhost:8080/spring-boot-api/imports/<workflowId>
 ```
 
 ## Common local failures
@@ -123,15 +146,15 @@ Check:
 - the `db` container is running
 - port `5432` is exposed
 - `server_db` exists
-- `app` and `batch` schemas exist
-- credentials match `application.properties`
+- `app` schema exists
+- local credentials in `application.properties` match the database
 
-### Upload starts but batch execution fails early
+### Upload starts but workflow fails early
 
 Likely causes:
 
 - app tables were not created
-- Spring Batch metadata tables are missing
+- Temporal dev server is not running
 - CSV format does not match the expected section headers or column layout
 
 ### Frontend loads but API calls fail
@@ -141,6 +164,14 @@ Check:
 - the backend is running on port `8080`
 - the frontend is running through Vite rather than opened as a static file
 - browser requests target `/spring-boot-api/...` and not a hardcoded alternate port
+
+### Backend starts but import requests fail immediately
+
+Check:
+
+- the Temporal dev server is running on `localhost:7233`
+- the Temporal namespace is `default`
+- the in-process worker started successfully with the backend
 
 ### PostgreSQL starts but app still fails on startup
 

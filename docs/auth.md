@@ -7,7 +7,7 @@ There is no authentication or authorization in the current codebase.
 The backend does not use Spring Security, does not issue tokens, and does not protect any endpoint. Any client that can reach the service can:
 
 - upload CSV files
-- query batch job status
+- query Temporal import workflow status
 - read all persisted transaction data
 
 ## CORS behavior

@@ -1,14 +1,17 @@
 package com.example.springserver.server;
 
+import com.example.springserver.server.dto.ImportStatusResponseDto;
+import com.example.springserver.server.dto.ImportStepStatusDto;
 import com.example.springserver.server.dto.UploadCsvInputDto;
-import com.example.springserver.server.dto.UploadCsvJobLaunchResult;
-import com.example.springserver.server.jobs.OtherIncomeBatchConfig;
-import com.example.springserver.server.jobs.SellsBatchConfig;
+import com.example.springserver.server.dto.UploadCsvResponseDto;
+import com.example.springserver.server.temporal.records.CsvImportRequest;
+import com.example.springserver.server.temporal.workflows.CsvImportWorkflow;
+import com.example.springserver.server.temporal.records.ImportStatusSnapshot;
+import com.example.springserver.server.temporal.TemporalTaskQueues;
+import io.temporal.client.WorkflowClient;
+import io.temporal.client.WorkflowNotFoundException;
+import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.JobParameters;
-import org.springframework.batch.core.JobParametersBuilder;
-import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -17,35 +20,58 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class UploadCsvService {
 
-    private final JobLauncher jobLauncher;
-    private final SellsBatchConfig sellsBatchConfig;
-    private final OtherIncomeBatchConfig otherIncomeBatchConfig;
+    private final WorkflowClient workflowClient;
+    private final UploadStorageService uploadStorageService;
 
-    public UploadCsvJobLaunchResult uploadCsv(UploadCsvInputDto input) {
+    public UploadCsvResponseDto uploadCsv(UploadCsvInputDto input) {
         try {
-            byte[] csvBytes = input.getFile().getBytes();
-            long launchId = System.currentTimeMillis();
+            var storedUpload = uploadStorageService.store(input.getFile());
+            String workflowId = "csv-import-" + storedUpload.uploadId();
 
-            Job sellsJob = sellsBatchConfig.processSellsCsvJob(csvBytes);
-            JobParameters sellsParams = buildJobParameters(input.getName(), launchId);
-            var sellsExecution = jobLauncher.run(sellsJob, sellsParams);
+            CsvImportWorkflow workflow = workflowClient.newWorkflowStub(
+                    CsvImportWorkflow.class,
+                    WorkflowOptions.newBuilder()
+                            .setTaskQueue(TemporalTaskQueues.CSV_IMPORT_TASK_QUEUE)
+                            .setWorkflowId(workflowId)
+                            .build());
 
-            Job otherIncomeJob = otherIncomeBatchConfig.processOtherIncomeCsvJob(csvBytes);
-            JobParameters otherIncomeParams = buildJobParameters(input.getName(), launchId);
-            var otherIncomeExecution = jobLauncher.run(otherIncomeJob, otherIncomeParams);
+            CsvImportRequest request = new CsvImportRequest(input.getName(), storedUpload);
+            var execution = WorkflowClient.start(workflow::runImport, request);
 
-            return new UploadCsvJobLaunchResult(sellsExecution.getId(), otherIncomeExecution.getId());
+            return new UploadCsvResponseDto(execution.getWorkflowId(), execution.getRunId(), input.getName());
         } catch (IOException e) {
             throw new RuntimeException("Failed to read uploaded file", e);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to launch batch job", e);
+            throw new RuntimeException("Failed to start Temporal workflow", e);
         }
     }
 
-    private JobParameters buildJobParameters(String name, long launchId) {
-        return new JobParametersBuilder()
-                .addString("name", name)
-                .addLong("timestamp", launchId)
-                .toJobParameters();
+    public ImportStatusResponseDto getImportStatus(String workflowId) {
+        try {
+            CsvImportWorkflow workflow = workflowClient.newWorkflowStub(CsvImportWorkflow.class, workflowId);
+            ImportStatusSnapshot snapshot = workflow.getStatus();
+            if (snapshot == null) {
+                return null;
+            }
+
+            return new ImportStatusResponseDto(
+                    snapshot.workflowId(),
+                    snapshot.statementName(),
+                    snapshot.status(),
+                    snapshot.createdAt(),
+                    snapshot.startedAt(),
+                    snapshot.completedAt(),
+                    snapshot.steps().stream()
+                            .map(step -> new ImportStepStatusDto(
+                                    step.stepName(),
+                                    step.status(),
+                                    step.readCount(),
+                                    step.writeCount()))
+                            .toList(),
+                    snapshot.failureMessages()
+            );
+        } catch (WorkflowNotFoundException e) {
+            return null;
+        }
     }
 }

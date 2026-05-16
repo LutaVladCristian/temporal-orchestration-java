@@ -8,12 +8,12 @@ This repository does not contain a full production deployment stack. This runboo
 
 1. Confirm whether the failure is:
    - upload/API
-   - batch execution
+   - Temporal workflow execution
    - database connectivity
    - data quality
 2. Capture:
    - request timestamp
-   - job execution id if available
+   - workflow id if available
    - backend logs
    - database connectivity state
 
@@ -21,7 +21,7 @@ This repository does not contain a full production deployment stack. This runboo
 
 ### Verify app reachability
 
-- `GET /spring-boot-api/job-status/{id}` for a known id
+- `GET /spring-boot-api/imports/{workflowId}` for a known id
 - container or process health
 - port `8080` listener
 
@@ -29,7 +29,7 @@ This repository does not contain a full production deployment stack. This runboo
 
 Prioritize:
 
-- Spring Batch exceptions
+- Temporal workflow start and worker exceptions
 - PostgreSQL connection failures
 - CSV parsing and type conversion errors
 - startup failures tied to missing tables
@@ -51,38 +51,18 @@ Confirm the application tables exist:
 - `app.income_from_sells`
 - `app.other_income_fees`
 
-Also confirm Spring Batch metadata tables exist if batch job execution is failing during repository initialization.
-
-At minimum, confirm:
-
-- `batch.batch_job_instance`
-- `batch.batch_job_execution`
-- `batch.batch_step_execution`
-
 ## Common failure modes
 
 ### Missing application tables
 
 Symptoms:
 
-- insert failures during batch writes
+- insert failures during activity writes
 - startup succeeds but uploads fail
 
 Action:
 
 - run the repository SQL scripts against `server_db`
-
-### Missing Spring Batch metadata tables
-
-Symptoms:
-
-- failures before or during job launch
-- exceptions from the batch repository layer
-
-Action:
-
-- apply `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
-- decide whether schema creation belongs in migrations or startup automation
 
 ### CSV format drift
 
@@ -111,6 +91,20 @@ Action:
 - restart the backend after PostgreSQL is fully ready
 - add health checks and readiness logic to the deployment
 
+### Temporal service unavailable
+
+Symptoms:
+
+- upload request fails immediately
+- workflow status stays unavailable
+- worker startup logs show Temporal connection failures
+
+Action:
+
+- verify the Temporal service is reachable on the configured target
+- confirm the namespace is `default` unless overridden
+- check that the worker started with the Spring Boot process
+
 ## Data validation queries
 
 Useful checks after a reported import:
@@ -134,4 +128,4 @@ Every recurring incident should feed one of:
 - better input validation
 - schema automation
 - startup readiness checks
-- integration tests around upload and batch execution
+- integration tests around upload and Temporal workflow execution
