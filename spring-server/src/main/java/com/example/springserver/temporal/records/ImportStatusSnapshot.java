@@ -1,4 +1,4 @@
-package com.example.springserver.server.temporal.records;
+package com.example.springserver.temporal.records;
 
 import java.util.ArrayList;
 import java.util.List;

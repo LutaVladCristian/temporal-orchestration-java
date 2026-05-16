@@ -1,15 +1,9 @@
-package com.example.springserver.server.temporal;
+package com.example.springserver.temporal;
 
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
-
 @Component
 public class CsvSectionExtractor {
-
-    public String extractSection(byte[] csvBytes, String sectionHeader) {
-        return extractSection(new String(csvBytes, StandardCharsets.UTF_8), sectionHeader);
-    }
 
     public String extractSection(String csv, String sectionHeader) {
         String[] lines = csv.split("\\r?\\n");

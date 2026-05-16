@@ -1,13 +1,13 @@
-package com.example.springserver.server.temporal.activities;
+package com.example.springserver.temporal.activities;
 
-import com.example.springserver.server.entity.IncomeFromSells;
-import com.example.springserver.server.entity.OtherIncomeFees;
-import com.example.springserver.server.temporal.CsvSectionExtractor;
-import com.example.springserver.server.repository.IncomeFromSellsRepository;
-import com.example.springserver.server.repository.OtherIncomeFeesRepository;
-import com.example.springserver.server.temporal.records.CsvImportRequest;
-import com.example.springserver.server.temporal.records.ImportStepResult;
-import com.example.springserver.server.temporal.records.StoredUploadRef;
+import com.example.springserver.entity.IncomeFromSells;
+import com.example.springserver.entity.OtherIncomeFees;
+import com.example.springserver.temporal.CsvSectionExtractor;
+import com.example.springserver.repository.IncomeFromSellsRepository;
+import com.example.springserver.repository.OtherIncomeFeesRepository;
+import com.example.springserver.temporal.records.CsvImportRequest;
+import com.example.springserver.temporal.records.ImportStepResult;
+import com.example.springserver.temporal.records.StoredUploadRef;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;

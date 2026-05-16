@@ -1,13 +1,13 @@
-package com.example.springserver.server;
+package com.example.springserver.service;
 
-import com.example.springserver.server.dto.ImportStatusResponseDto;
-import com.example.springserver.server.dto.ImportStepStatusDto;
-import com.example.springserver.server.dto.UploadCsvInputDto;
-import com.example.springserver.server.dto.UploadCsvResponseDto;
-import com.example.springserver.server.temporal.records.CsvImportRequest;
-import com.example.springserver.server.temporal.workflows.CsvImportWorkflow;
-import com.example.springserver.server.temporal.records.ImportStatusSnapshot;
-import com.example.springserver.server.temporal.TemporalTaskQueues;
+import com.example.springserver.dto.ImportStatusResponseDto;
+import com.example.springserver.dto.ImportStepStatusDto;
+import com.example.springserver.dto.UploadCsvInputDto;
+import com.example.springserver.dto.UploadCsvResponseDto;
+import com.example.springserver.temporal.records.CsvImportRequest;
+import com.example.springserver.temporal.workflows.CsvImportWorkflow;
+import com.example.springserver.temporal.records.ImportStatusSnapshot;
+import com.example.springserver.temporal.TemporalTaskQueues;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;

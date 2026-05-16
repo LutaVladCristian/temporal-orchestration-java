@@ -1,10 +1,10 @@
-package com.example.springserver.server.temporal.workflows;
+package com.example.springserver.temporal.workflows;
 
-import com.example.springserver.server.temporal.activities.CsvImportActivities;
-import com.example.springserver.server.temporal.records.CsvImportRequest;
-import com.example.springserver.server.temporal.records.ImportStatusSnapshot;
-import com.example.springserver.server.temporal.records.ImportStepResult;
-import com.example.springserver.server.temporal.records.ImportStepSnapshot;
+import com.example.springserver.temporal.activities.CsvImportActivities;
+import com.example.springserver.temporal.records.CsvImportRequest;
+import com.example.springserver.temporal.records.ImportStatusSnapshot;
+import com.example.springserver.temporal.records.ImportStepResult;
+import com.example.springserver.temporal.records.ImportStepSnapshot;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.workflow.Async;

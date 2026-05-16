@@ -1,4 +1,4 @@
-package com.example.springserver.server.dto;
+package com.example.springserver.dto;
 
 public record ImportStepStatusDto(
         String stepName,

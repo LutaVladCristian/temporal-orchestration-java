@@ -1,6 +1,6 @@
-package com.example.springserver.server;
+package com.example.springserver.service;
 
-import com.example.springserver.server.temporal.records.StoredUploadRef;
+import com.example.springserver.temporal.records.StoredUploadRef;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;

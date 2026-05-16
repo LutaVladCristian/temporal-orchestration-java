@@ -1,8 +1,8 @@
 package com.example.springserver.config;
 
-import com.example.springserver.server.temporal.activities.CsvImportActivitiesImpl;
-import com.example.springserver.server.temporal.workflows.CsvImportWorkflowImpl;
-import com.example.springserver.server.temporal.TemporalTaskQueues;
+import com.example.springserver.temporal.activities.CsvImportActivitiesImpl;
+import com.example.springserver.temporal.workflows.CsvImportWorkflowImpl;
+import com.example.springserver.temporal.TemporalTaskQueues;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;

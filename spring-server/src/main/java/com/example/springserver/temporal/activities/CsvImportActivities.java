@@ -1,7 +1,7 @@
-package com.example.springserver.server.temporal.activities;
+package com.example.springserver.temporal.activities;
 
-import com.example.springserver.server.temporal.records.CsvImportRequest;
-import com.example.springserver.server.temporal.records.ImportStepResult;
+import com.example.springserver.temporal.records.CsvImportRequest;
+import com.example.springserver.temporal.records.ImportStepResult;
 import io.temporal.activity.ActivityInterface;
 
 @ActivityInterface

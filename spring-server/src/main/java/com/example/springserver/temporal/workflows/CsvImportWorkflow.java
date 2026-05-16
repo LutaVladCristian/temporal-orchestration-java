@@ -1,7 +1,7 @@
-package com.example.springserver.server.temporal.workflows;
+package com.example.springserver.temporal.workflows;
 
-import com.example.springserver.server.temporal.records.CsvImportRequest;
-import com.example.springserver.server.temporal.records.ImportStatusSnapshot;
+import com.example.springserver.temporal.records.CsvImportRequest;
+import com.example.springserver.temporal.records.ImportStatusSnapshot;
 import io.temporal.workflow.QueryMethod;
 import io.temporal.workflow.WorkflowInterface;
 import io.temporal.workflow.WorkflowMethod;

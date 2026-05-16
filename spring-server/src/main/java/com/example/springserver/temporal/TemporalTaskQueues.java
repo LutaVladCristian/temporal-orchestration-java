@@ -1,4 +1,4 @@
-package com.example.springserver.server.temporal;
+package com.example.springserver.temporal;
 
 public final class TemporalTaskQueues {
 

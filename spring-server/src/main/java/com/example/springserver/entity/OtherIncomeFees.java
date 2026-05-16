@@ -1,4 +1,4 @@
-package com.example.springserver.server.entity;
+package com.example.springserver.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -14,18 +14,15 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "income_from_sells")
-public class IncomeFromSells {
+@Table(name = "other_income_fees")
+public class OtherIncomeFees {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "date_aquired", nullable = false)
-    private LocalDate dateAcquired;
-
-    @Column(name = "date_sold", nullable = false)
-    private LocalDate dateSold;
+    private LocalDate date;
 
     @Column(name = "symbol", nullable = false, length = 32)
     private String symbol;
@@ -39,17 +36,14 @@ public class IncomeFromSells {
     @Column(name = "country", nullable = false, length = 50)
     private String country;
 
-    @Column(name = "quantity", nullable = false)
-    private BigDecimal quantity;
+    @Column(name = "gross_amount", nullable = false)
+    private BigDecimal grossAmount;
 
-    @Column(name = "cost_basis", nullable = false)
-    private BigDecimal costBasis;
+    @Column(name = "withholding_tax", nullable = false, length = 20)
+    private String withholdingTax;
 
-    @Column(name = "gross_proceeds", nullable = false)
-    private BigDecimal grossProceeds;
-
-    @Column(name = "gross_pnl", nullable = false)
-    private BigDecimal grossPnl;
+    @Column(name = "net_amount", nullable = false, length = 20)
+    private String netAmount;
 
     @Column(name = "currency", nullable = false, length = 10)
     private String currency;
