@@ -32,7 +32,9 @@ The backend uses these runtime variables:
 - `SPRING_DATASOURCE_USERNAME`
 - `SPRING_DATASOURCE_PASSWORD`
 
-Defaults are also present in `application.properties`, which is convenient for local development but should not be relied on for real deployment.
+Shared defaults live in `spring-server/src/main/resources/application.yaml`.
+
+`spring-server/src/main/resources/application.properties` is reserved for local-development secret overrides, currently the PostgreSQL username and password. Real deployments should provide credentials through environment-managed secrets instead.
 
 ## Local container deployment
 
@@ -63,21 +65,21 @@ This is important because:
 
 - Hibernate DDL is disabled
 - app tables and schemas are not auto-created
-- Spring Batch schema auto-init is disabled with `spring.batch.jdbc.initialize-schema=never`
+- the application still uses hand-applied SQL for the `app` schema
 
 Apply the scripts in order:
 
 1. `database-setup/version1/01_initial_set_up.sql`
 2. `database-setup/version2/01_create_income_from_sells_table.sql`
 3. `database-setup/version2/02_create_other_income_fees_table copy.sql`
-4. `database-setup/version2/03_create_spring_batch_metadata_tables.sql`
 
-The initial setup script uses `psql` meta-commands and creates:
+The repository SQL scripts create:
 
 - database `server_db`
 - schema `app`
-- schema `batch`
-- database `search_path` of `app, batch, public`
+- the application tables under `app`
+
+The runtime CSV import path is Temporal-based and writes only to the `app` tables. Older notes about a dedicated Spring Batch schema no longer match the committed SQL setup.
 
 ## Production concerns
 
@@ -91,10 +93,9 @@ The current compose setup is not production-ready.
 
 Passwords are committed in local defaults and compose config. Replace them with environment-managed secrets before any non-local deployment.
 
-### Batch metadata schema
+### Temporal service dependency
 
-Spring Batch requires metadata tables. The repository includes an explicit PostgreSQL SQL script for them in `database-setup/version2/03_create_spring_batch_metadata_tables.sql`, but a deployment plan still needs to ensure that script is applied consistently.
-
+The backend now depends on a reachable Temporal service in addition to PostgreSQL. The repository does not include Temporal in `spring-server/compose.yaml`, so any deployment plan needs an explicit Temporal service or Temporal Cloud target.
 ### Persistence and backup
 
 The compose volume `pgdata` persists the PostgreSQL data directory locally, but there is no backup, retention, or restore procedure in the repository.
@@ -105,7 +106,8 @@ For a serious deployment, add at least:
 
 1. Database creation and migration automation
 2. Secret management
-3. Health checks and readiness gates
-4. Structured logging and log aggregation
-5. Backup and restore procedures
-6. Auth before external exposure
+3. Temporal service provisioning and connectivity management
+4. Health checks and readiness gates
+5. Structured logging and log aggregation
+6. Backup and restore procedures
+7. Auth before external exposure

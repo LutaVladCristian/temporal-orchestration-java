@@ -313,6 +313,31 @@ button {
   font-size: 0.95rem;
 }
 
+.job-status-list {
+  display: grid;
+  gap: 16px;
+}
+
+.job-status-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: #151716;
+  border: 1px solid rgba(244, 244, 239, 0.06);
+}
+
+.job-status-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.job-status-header strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
 .step-list {
   display: grid;
   gap: 12px;
@@ -443,7 +468,8 @@ button {
   .drop-zone,
   .drop-zone-copy,
   .toolbar,
-  .section-heading {
+  .section-heading,
+  .job-status-header {
     flex-direction: column;
     align-items: stretch;
   }

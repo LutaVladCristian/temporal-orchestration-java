@@ -1,26 +1,24 @@
 export type UploadResponse = {
-  jobExecutionId: number;
+  importWorkflowId: string;
+  importRunId: string;
   statementName: string;
 };
 
-export type StepStatus = {
+export type ImportStepStatus = {
   stepName: string;
   status: string;
   readCount: number;
   writeCount: number;
-  commitCount: number;
 };
 
-export type JobStatus = {
-  executionId: number;
-  jobName: string;
+export type ImportStatus = {
+  workflowId: string;
+  statementName: string;
   status: string;
-  exitCode: string;
-  createTime: string | null;
-  startTime: string | null;
-  endTime: string | null;
-  lastUpdated: string | null;
-  steps: StepStatus[];
+  createdAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  steps: ImportStepStatus[];
   failureMessages: string[];
 };
 
@@ -72,8 +70,8 @@ export async function uploadCsv(statementName: string, file: File): Promise<Uplo
   });
 }
 
-export async function fetchJobStatus(executionId: number): Promise<JobStatus> {
-  return request<JobStatus>(`/spring-boot-api/job-status/${executionId}`);
+export async function fetchImportStatus(workflowId: string): Promise<ImportStatus> {
+  return request<ImportStatus>(`/spring-boot-api/imports/${workflowId}`);
 }
 
 export async function fetchIncomeFromSells(): Promise<IncomeFromSellsRow[]> {

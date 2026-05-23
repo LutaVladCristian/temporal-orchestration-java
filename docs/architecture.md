@@ -2,19 +2,23 @@
 
 ## Current scope
 
-This repository currently contains a React frontend and a Spring Boot backend that ingest broker CSV statements, parse them with Spring Batch, persist normalized rows into PostgreSQL, and expose the stored rows for UI review.
+This repository currently contains a React frontend and a Spring Boot backend that ingest broker CSV statements, orchestrate parsing with Temporal, persist normalized rows into PostgreSQL, and expose the stored rows for UI review.
 
 ## System context
 
-The implemented system is a UI-driven ingestion workflow backed by a relational database:
+The implemented system is a UI-driven ingestion workflow backed by PostgreSQL and Temporal:
 
 ```text
 React UI
   -> UploadCsvController
   -> UploadCsvService
-  -> async Spring Batch job
-     -> sells step
-     -> other income step
+  -> UploadStorageService
+  -> Temporal WorkflowClient
+  -> CsvImportWorkflow
+     -> importSells activity
+     -> importOtherIncome activity
+  -> Temporal Worker
+  -> local Temporal service
   -> JPA repositories
   -> PostgreSQL
   -> AG Grid data views
@@ -35,7 +39,7 @@ Responsibilities:
 
 - drag-and-drop CSV upload
 - statement naming
-- batch job polling
+- Temporal workflow polling
 - summary metrics for imported rows
 - two separate AG Grid views for the persisted tables
 
@@ -46,7 +50,7 @@ Responsibilities:
   - Java 21
   - Spring Boot 3.5
   - Spring Web
-  - Spring Batch
+  - Temporal Java SDK
   - Spring Data JPA
   - PostgreSQL JDBC driver
 
@@ -54,32 +58,37 @@ Responsibilities:
 
 - `UploadCsvController`
   - `POST /spring-boot-api/upload-csv`
-  - `GET /spring-boot-api/job-status/{executionId}`
+  - `GET /spring-boot-api/imports/{workflowId}`
   - `GET /spring-boot-api/income-from-sells`
   - `GET /spring-boot-api/other-income-fees`
 
 ### Service layer
 
 - `UploadCsvService`
-  - reads the uploaded `MultipartFile`
-  - builds a batch job from the uploaded byte array
-  - launches the job with a timestamped job parameter set
+  - stores the uploaded file reference
+  - starts one Temporal workflow for the import
+  - queries workflow status for frontend polling
 
-### Batch infrastructure
+- `UploadStorageService`
+  - writes uploads to a local storage directory
+  - returns a file reference that can be passed into the workflow
 
-- `BatchInfrastructureConfig`
-  - provides an async `JobLauncher` backed by `SimpleAsyncTaskExecutor`
-  - allows the UI to receive a job execution id immediately and poll for progress
+### Temporal orchestration layer
 
-### Batch processing layer
+- `CsvImportWorkflow`
+  - owns the end-to-end import lifecycle
+  - tracks workflow status and per-step completion state
+  - runs the two import activities in parallel
 
-- `CsvBatchConfig`
-  - splits the uploaded CSV into named sections
-  - runs a two-step job:
-    - `sellsStep`
-    - `otherIncomeStep`
-  - maps each row into JPA entities
-  - persists rows through repository writers
+- `CsvImportActivitiesImpl`
+  - reads the stored CSV file
+  - extracts supported statement sections
+  - maps rows into JPA entities
+  - persists rows through repositories
+
+- `TemporalWorkerConfig`
+  - registers the workflow and activities on the import task queue
+  - starts the in-process worker with the Spring Boot app
 
 ### Persistence layer
 
@@ -97,7 +106,6 @@ Responsibilities:
 - Migration scripts: `database-setup/`
 - Schemas:
   - `app` for ingestion tables
-  - `batch` for Spring Batch metadata
 
 ## Request and processing flow
 
@@ -105,12 +113,26 @@ Responsibilities:
 
 1. The frontend sends multipart form data with `name` and `file`.
 2. `UploadCsvController` builds `UploadCsvInputDto`.
-3. `UploadCsvService` reads the file into memory as `byte[]`.
-4. `CsvBatchConfig.processCsvJob(csvBytes)` creates a job instance bound to that upload.
-5. `TaskExecutorJobLauncher` starts the batch job asynchronously.
-6. The controller returns `jobExecutionId` immediately.
-7. The frontend polls `GET /job-status/{executionId}` until the job reaches a terminal status.
-8. The frontend refreshes the two read endpoints and shows the imported rows in AG Grid.
+3. `UploadStorageService` writes the file to local disk and returns a stored upload reference.
+4. `UploadCsvService` starts one Temporal workflow with the statement name and stored upload reference.
+5. The controller returns the workflow id immediately.
+6. The frontend polls `GET /imports/{workflowId}` until the workflow reaches a terminal status.
+7. The workflow starts two activities in parallel:
+   - `sellsStep`
+   - `otherIncomeStep`
+8. When the workflow completes successfully, the frontend refreshes the two read endpoints and shows the imported rows in AG Grid.
+
+### Temporal platform model
+
+Temporal is the durable execution platform in this repository:
+
+- Workflows hold orchestration state and execution history
+- Activities perform I/O and database work
+- Workers poll the Temporal task queue and execute workflow and activity tasks
+- The local Temporal service exposes gRPC on `localhost:7233`
+- The local Temporal Web UI runs on `http://localhost:8233`
+
+The current implementation keeps CSV file contents out of Temporal payloads. Only statement metadata and a stored file reference are passed into the workflow. This avoids pushing multi-megabyte uploads through workflow and activity arguments.
 
 ### CSV parsing approach
 
@@ -160,18 +182,18 @@ The repository SQL setup uses a single PostgreSQL database, `server_db`, with:
 
 - `app.income_from_sells`
 - `app.other_income_fees`
-- `batch.*` Spring Batch metadata tables and sequences
 
-The initial database script sets `search_path` to `app, batch, public` so the current JPA mappings and Spring Batch defaults continue to work without schema-qualified table names in the Java code.
+The committed SQL scripts create and evolve the `app` schema tables. The current Temporal implementation writes only to those `app` tables.
 
 ## Notable implementation details
 
-- The batch job is launched programmatically; `spring.batch.job.enabled=false` only disables auto-run at startup.
-- Uploaded CSV files are processed fully in memory as `byte[]`.
-- The async job launcher uses `SimpleAsyncTaskExecutor`, so job execution is decoupled from the HTTP request thread.
+- The backend stores uploaded CSV files on local disk before starting the workflow.
+- The Temporal worker runs inside the Spring Boot process for local development simplicity.
+- The two import activities execute in parallel inside one workflow.
+- Activity retries are currently capped at one attempt to avoid duplicate inserts in the absence of statement-level idempotency.
 - CORS accepts localhost origins on arbitrary ports to support local Vite dev servers.
 - Schema management is manual. Hibernate DDL is disabled with `spring.jpa.hibernate.ddl-auto=none`.
-- The initial setup script assumes `psql` because it uses `\connect`.
+- The repository does not include an automated migration runner; contributors still apply the SQL scripts manually.
 
 ## Gaps and risks
 
@@ -186,6 +208,7 @@ The initial database script sets `search_path` to `app, batch, public` so the cu
 - No automated application table bootstrap beyond container-created `server_db`
 - No migration runner; schema creation still depends on manually applying the repository SQL scripts
 - No readiness handling between app startup and PostgreSQL readiness in `compose.yaml`
+- No Temporal service orchestration in repository Docker Compose; local development currently expects `temporal server start-dev`
 - Minimal backend test coverage: only a context load test exists
 
 ### Code and schema inconsistencies
@@ -199,7 +222,7 @@ The initial database script sets `search_path` to `app, batch, public` so the cu
 If this repository continues toward the stated product goal, the next major layer should sit after ingestion:
 
 ```text
-CSV ingestion -> normalized transaction store -> tax domain service -> AI/RAG reasoning layer -> user-facing explanation/report
+CSV ingestion -> Temporal-orchestrated import history -> normalized transaction store -> tax domain service -> AI/RAG reasoning layer -> user-facing explanation/report
 ```
 
 That would separate deterministic bookkeeping from AI-assisted interpretation and explanation.

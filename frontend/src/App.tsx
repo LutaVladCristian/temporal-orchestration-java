@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
 import {
+  fetchImportStatus,
   fetchIncomeFromSells,
-  fetchJobStatus,
   fetchOtherIncomeFees,
   type IncomeFromSellsRow,
-  type JobStatus,
+  type ImportStatus,
   type OtherIncomeFeesRow,
   uploadCsv
 } from "./api";
@@ -17,6 +17,7 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 type GridView = "sells" | "other";
 
 const terminalStatuses = new Set(["COMPLETED", "FAILED", "STOPPED", "ABANDONED"]);
+const failedStatuses = new Set(["FAILED", "STOPPED", "ABANDONED"]);
 
 const defaultColDef: ColDef = {
   sortable: true,
@@ -48,6 +49,26 @@ function fileNameToStatementName(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
 }
 
+function aggregateImportStatus(importStatus: ImportStatus | null) {
+  if (!importStatus) {
+    return "IDLE";
+  }
+
+  if (failedStatuses.has(importStatus.status)) {
+    return "FAILED";
+  }
+
+  if (importStatus.status === "COMPLETED") {
+    return "COMPLETED";
+  }
+
+  if (importStatus.status === "RUNNING") {
+    return "STARTED";
+  }
+
+  return "IDLE";
+}
+
 export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -56,7 +77,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<GridView>("sells");
   const [sellsSearch, setSellsSearch] = useState("");
   const [otherSearch, setOtherSearch] = useState("");
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -151,33 +172,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!jobStatus || terminalStatuses.has(jobStatus.status)) {
+    if (!importStatus || terminalStatuses.has(importStatus.status)) {
       return undefined;
     }
 
     const intervalId = window.setInterval(async () => {
       try {
-        const nextStatus = await fetchJobStatus(jobStatus.executionId);
-        setJobStatus(nextStatus);
+        const nextStatus = await fetchImportStatus(importStatus.workflowId);
+        setImportStatus(nextStatus);
 
         if (terminalStatuses.has(nextStatus.status)) {
           window.clearInterval(intervalId);
           setUploading(false);
+
           if (nextStatus.status === "COMPLETED") {
             void loadTables();
-          } else if (nextStatus.failureMessages.length > 0) {
-            setErrorMessage(nextStatus.failureMessages.join(" | "));
+          } else {
+            const failureMessage = nextStatus.failureMessages.join(" | ");
+            if (failureMessage) {
+              setErrorMessage(failureMessage);
+            }
           }
         }
       } catch (error) {
         setUploading(false);
-        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the batch job.");
+        setErrorMessage(error instanceof Error ? error.message : "Failed to poll the Temporal workflow.");
         window.clearInterval(intervalId);
       }
     }, 1500);
 
     return () => window.clearInterval(intervalId);
-  }, [jobStatus]);
+  }, [importStatus]);
 
   function handleFileSelected(file: File | null) {
     if (!file) {
@@ -205,15 +230,19 @@ export default function App() {
 
     try {
       const uploadResponse = await uploadCsv(statementName.trim(), selectedFile);
-      const initialStatus = await fetchJobStatus(uploadResponse.jobExecutionId);
-      setJobStatus(initialStatus);
-
-      if (terminalStatuses.has(initialStatus.status)) {
-        setUploading(false);
-        if (initialStatus.status === "COMPLETED") {
-          await loadTables();
-        }
-      }
+      setImportStatus({
+        workflowId: uploadResponse.importWorkflowId,
+        statementName: uploadResponse.statementName,
+        status: "RUNNING",
+        createdAt: null,
+        startedAt: null,
+        completedAt: null,
+        steps: [
+          { stepName: "sellsStep", status: "RUNNING", readCount: 0, writeCount: 0 },
+          { stepName: "otherIncomeStep", status: "RUNNING", readCount: 0, writeCount: 0 }
+        ],
+        failureMessages: []
+      });
     } catch (error) {
       setUploading(false);
       setErrorMessage(error instanceof Error ? error.message : "Failed to upload CSV.");
@@ -224,12 +253,7 @@ export default function App() {
     ? `${selectedFile.name} (${Math.max(1, Math.round(selectedFile.size / 1024))} KB)`
     : "Drop a CSV here or browse from disk";
 
-  const visibleSteps = jobStatus?.steps.length
-    ? jobStatus.steps
-    : [
-        { stepName: "sellsStep", status: "WAITING", readCount: 0, writeCount: 0, commitCount: 0 },
-        { stepName: "otherIncomeStep", status: "WAITING", readCount: 0, writeCount: 0, commitCount: 0 }
-      ];
+  const importStatusSummary = aggregateImportStatus(importStatus);
 
   return (
     <div className="app-shell">
@@ -241,7 +265,7 @@ export default function App() {
         <div className="hero-meta">
           <div>
             <span>Backend</span>
-            <strong>Spring Batch + PostgreSQL</strong>
+            <strong>Temporal + PostgreSQL</strong>
           </div>
           <div>
             <span>Frontend</span>
@@ -255,7 +279,7 @@ export default function App() {
           <div className="section-heading">
             <div>
               <p className="section-kicker">1. Upload</p>
-              <h2>Send a statement and start a batch run.</h2>
+              <h2>Send a statement and start two batch runs.</h2>
             </div>
             <button className="secondary-button" type="button" onClick={() => void loadTables()}>
               Refresh tables
@@ -321,52 +345,69 @@ export default function App() {
         <section className="section-panel status-panel">
           <div className="section-heading compact">
             <div>
-              <p className="section-kicker">2. Batch status</p>
-              <h2>Track the current Spring Batch execution.</h2>
+              <p className="section-kicker">2. Import status</p>
+              <h2>Track the current Temporal workflow execution.</h2>
             </div>
           </div>
 
           <div className="status-chip-row">
-            <div className={`status-chip status-${jobStatus?.status?.toLowerCase() ?? "idle"}`}>
-              {jobStatus?.status ?? "Idle"}
+            <div className={`status-chip status-${importStatusSummary.toLowerCase()}`}>
+              {importStatusSummary}
             </div>
-            {jobStatus ? <span className="muted">Execution #{jobStatus.executionId}</span> : null}
+            {importStatus ? <span className="muted">Workflow {importStatus.workflowId}</span> : null}
           </div>
 
-          <dl className="status-metadata">
-            <div>
-              <dt>Created</dt>
-              <dd>{formatDateTime(jobStatus?.createTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Started</dt>
-              <dd>{formatDateTime(jobStatus?.startTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Finished</dt>
-              <dd>{formatDateTime(jobStatus?.endTime ?? null)}</dd>
-            </div>
-            <div>
-              <dt>Exit code</dt>
-              <dd>{jobStatus?.exitCode ?? "N/A"}</dd>
-            </div>
-          </dl>
-
-          <div className="step-list">
-            {visibleSteps.map((step) => (
-              <article key={step.stepName} className="step-item">
-                <div className="step-header">
-                  <strong>{step.stepName}</strong>
-                  <span>{step.status}</span>
+          {importStatus ? (
+            <div className="job-status-list">
+              <article className="job-status-card">
+                <div className="job-status-header">
+                  <div>
+                    <strong>{importStatus.statementName}</strong>
+                    <div className="muted">{importStatus.workflowId}</div>
+                  </div>
+                  <div className={`status-chip status-${importStatus.status.toLowerCase()}`}>
+                    {importStatus.status}
+                  </div>
                 </div>
-                <div className="step-stats">
-                  <span>Read {step.readCount}</span>
-                  <span>Written {step.writeCount}</span>
-                  <span>Commits {step.commitCount}</span>
+
+                <dl className="status-metadata">
+                  <div>
+                    <dt>Created</dt>
+                    <dd>{formatDateTime(importStatus.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Started</dt>
+                    <dd>{formatDateTime(importStatus.startedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Finished</dt>
+                    <dd>{formatDateTime(importStatus.completedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Platform</dt>
+                    <dd>Temporal workflow</dd>
+                  </div>
+                </dl>
+
+                <div className="step-list">
+                  {importStatus.steps.map((step) => (
+                    <article key={step.stepName} className="step-item">
+                      <div className="step-header">
+                        <strong>{step.stepName}</strong>
+                        <span>{step.status}</span>
+                      </div>
+                      <div className="step-stats">
+                        <span>Read {step.readCount}</span>
+                        <span>Written {step.writeCount}</span>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </article>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <p className="muted">No import launched yet.</p>
+          )}
         </section>
       </main>
 

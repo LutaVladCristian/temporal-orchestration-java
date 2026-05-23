@@ -19,7 +19,7 @@ The local frontend proxies this base path from `http://localhost:5173`.
 
 ### `POST /upload-csv`
 
-Uploads a trading statement CSV and queues a Spring Batch job.
+Uploads a trading statement CSV, stores it on local disk, and starts one Temporal workflow that runs the two import activities in parallel.
 
 #### Form fields
 
@@ -38,54 +38,54 @@ curl -X POST http://localhost:8080/spring-boot-api/upload-csv \
 
 ```json
 {
-  "jobExecutionId": 123,
+  "importWorkflowId": "csv-import-3ce84c52-503f-4df8-9501-a8a8e1d5f178",
+  "importRunId": "2dcf8f20-77e8-42c2-9855-b6d638a58d79",
   "statementName": "2025 tax year"
 }
 ```
 
 #### Notes
 
-- The controller returns as soon as the batch execution is launched.
-- The backend reads the uploaded file fully into memory before creating the batch job.
-- The `name` parameter is currently only included in job parameters and echoed in the response. It is not persisted in the database.
+- The controller returns as soon as the Temporal workflow is started.
+- The backend stores the upload on local disk before the workflow starts.
+- The workflow currently runs two activities:
+  - `sellsStep`
+  - `otherIncomeStep`
+- The `name` parameter is used for workflow status and echoed in the response. It is not persisted in the database.
 - Multipart upload limits are `10MB` for both the file and request size.
 
-### `GET /job-status/{executionId}`
+### `GET /imports/{workflowId}`
 
-Returns the current Spring Batch execution status for a previously started job.
+Returns the current Temporal workflow status for a previously started import.
 
 #### Example
 
 ```bash
-curl http://localhost:8080/spring-boot-api/job-status/123
+curl http://localhost:8080/spring-boot-api/imports/csv-import-3ce84c52-503f-4df8-9501-a8a8e1d5f178
 ```
 
 #### Success response
 
 ```json
 {
-  "executionId": 123,
-  "jobName": "processCsvJob",
-  "status": "STARTED",
-  "exitCode": "EXECUTING",
-  "createTime": "2026-05-15T12:23:11.038",
-  "startTime": "2026-05-15T12:23:11.139",
-  "endTime": null,
-  "lastUpdated": "2026-05-15T12:23:11.201",
+  "workflowId": "csv-import-3ce84c52-503f-4df8-9501-a8a8e1d5f178",
+  "statementName": "2025 tax year",
+  "status": "RUNNING",
+  "createdAt": "2026-05-15T14:23:11.038Z",
+  "startedAt": "2026-05-15T14:23:11.038Z",
+  "completedAt": null,
   "steps": [
     {
       "stepName": "sellsStep",
       "status": "COMPLETED",
       "readCount": 35,
-      "writeCount": 35,
-      "commitCount": 4
+      "writeCount": 35
     },
     {
       "stepName": "otherIncomeStep",
-      "status": "STARTED",
-      "readCount": 2,
-      "writeCount": 0,
-      "commitCount": 0
+      "status": "RUNNING",
+      "readCount": 0,
+      "writeCount": 0
     }
   ],
   "failureMessages": []
@@ -94,16 +94,13 @@ curl http://localhost:8080/spring-boot-api/job-status/123
 
 #### Possible statuses
 
-- `STARTING`
-- `STARTED`
+- `RUNNING`
 - `COMPLETED`
 - `FAILED`
-- `STOPPED`
-- `ABANDONED`
 
 #### Error response
 
-- `404 Not Found` if the execution id does not exist
+- `404 Not Found` if the workflow id does not exist
 
 ### `GET /income-from-sells`
 
@@ -155,12 +152,13 @@ Returns all persisted non-sale income rows, ordered by `date DESC, id DESC`.
 
 ## Error behavior
 
-The controller does not define a custom exception model. Unhandled failures from upload or batch startup currently surface through Spring Boot's default error handling.
+The controller does not define a custom exception model. Unhandled failures from upload start or workflow execution currently surface through Spring Boot's default error handling.
 
 Typical failure classes:
 
 - invalid or unreadable upload
-- batch job launch failure
+- Temporal workflow start failure
+- workflow activity failure during CSV parsing or persistence
 - database connection failure
 - CSV parsing failure
 
@@ -172,3 +170,4 @@ Typical failure classes:
 - No statement-level scoping; `GET` endpoints return all rows in their tables
 - No delete or reprocessing workflow
 - No stable contract for validation errors
+- No statement-level idempotency for repeated imports of the same file

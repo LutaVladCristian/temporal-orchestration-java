@@ -15,8 +15,14 @@
 
 	<properties>
 		<java.version>21</java.version>
+		<temporal.version>1.35.0</temporal.version>
 	</properties>
 	<dependencies>
+		<dependency>
+			<groupId>io.temporal</groupId>
+			<artifactId>temporal-spring-boot-starter</artifactId>
+			<version>${temporal.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
